@@ -3,4 +3,4 @@ steps:
   args: ['builds', 'submit', '--tag', 'gcr.io/$PROJECT_ID/lucillellm']
 
 - name: 'gcr.io/cloud-builders/gcloud'
-  args: ['run', 'deploy', 'lucillellm', '--image', 'gcr.io/$PROJECT_ID/lucillellm', '--region', 'us-central1']
+  args: ['run', 'deploy', 'lucillellm', '--image', 'gcr.io/$PROJECT_ID/lucillellm', '--region', 'us-central1', '--allow-unauthenticated']
