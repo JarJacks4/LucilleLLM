@@ -17,9 +17,10 @@ RUN apt-get update && apt-get install -y \
 # Copy the application files to the container
 COPY . /app
 
-# Install dependencies from requirements.txt
+# Install dependencies and Uvicorn
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install uvicorn
 
 # Expose port 8080 for Cloud Run
 EXPOSE 8080
