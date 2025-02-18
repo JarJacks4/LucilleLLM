@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     gobject-introspection \
     libgirepository1.0-dev \
     gir1.2-glib-2.0 \
+    python3-apt \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the application files to the container
