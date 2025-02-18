@@ -18,7 +18,8 @@ RUN apt-get update && apt-get install -y \
 COPY . /app
 
 # Install dependencies from requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
 # Expose port 8080 for Cloud Run
 EXPOSE 8080
