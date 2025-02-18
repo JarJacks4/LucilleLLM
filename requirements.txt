@@ -26,6 +26,7 @@ Django==5.1.4
 dnspython==2.7.0
 docstring_parser==0.16
 executing==2.1.0
+fastapi==0.110.1
 filelock==3.16.1
 flake8==3.8.4
 Flask==3.1.0
@@ -152,6 +153,7 @@ tomlkit==0.13.2
 traitlets==5.14.3
 typing_extensions==4.12.2
 ujson==5.10.0
+uvicorn==0.29.0
 uritemplate==4.1.1
 urllib3==2.3.0
 virtualenv==20.28.1
