@@ -4,10 +4,13 @@ FROM python:3.12
 # Set the working directory inside the container
 WORKDIR /app
 
-# Install system dependencies (fixes dbus-python)
+# Install system dependencies required for some Python packages
 RUN apt-get update && apt-get install -y \
     libdbus-1-dev \
     pkg-config \
+    gobject-introspection \
+    libgirepository1.0-dev \
+    gir1.2-glib-2.0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the application files to the container
