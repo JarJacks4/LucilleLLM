@@ -4,6 +4,12 @@ FROM python:3.12
 # Set the working directory inside the container
 WORKDIR /app
 
+# Install system dependencies (fixes dbus-python)
+RUN apt-get update && apt-get install -y \
+    libdbus-1-dev \
+    pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy the application files to the container
 COPY . /app
 
