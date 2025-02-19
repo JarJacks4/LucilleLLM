@@ -5,7 +5,7 @@ FROM python:3.12
 WORKDIR /app
 
 # Install system dependencies required for some Python packages
-RUN apt-get update && apt-get install 
+RUN apt-get update && apt-get install -y \
     libdbus-1-dev \
     libglib2.0-dev \
     pkg-config \
@@ -19,9 +19,9 @@ RUN apt-get update && apt-get install
 # Copy the application files to the container
 COPY . /app
 
-# Upgrade pip and install dependencies
+# Upgrade pip and install dependencies dynamically (without strict conflicts)
 RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade-strategy eager -r requirements.txt
 
 # Expose port 8080 for Cloud Run
 EXPOSE 8080
