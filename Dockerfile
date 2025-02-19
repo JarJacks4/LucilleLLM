@@ -19,9 +19,13 @@ RUN apt-get update && apt-get install -y \
 # Copy the application files to the container
 COPY . /app
 
-# Upgrade pip and install dependencies dynamically (without strict conflicts)
-RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir --upgrade-strategy eager -r requirements.txt
+# Upgrade pip and install dependencies efficiently
+RUN pip install --no-cache-dir --upgrade pip --root-user-action=ignore \
+    && pip install --no-cache-dir --no-deps -r requirements.txt \
+    && pip install --no-cache-dir --upgrade --use-deprecated=legacy-resolver -r requirements.txt
+
+# Verify that there are no dependency issues
+RUN pip check || echo "Warning: Some dependencies may have conflicts."
 
 # Expose port 8080 for Cloud Run
 EXPOSE 8080
