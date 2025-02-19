@@ -5,7 +5,7 @@ FROM python:3.12
 WORKDIR /app
 
 # Install system dependencies required for some Python packages
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install 
     libdbus-1-dev \
     libglib2.0-dev \
     pkg-config \
