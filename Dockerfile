@@ -6,7 +6,6 @@ WORKDIR /app
 
 # Install system dependencies required for some Python packages
 RUN apt-get update && apt-get install -y \
-    python3-apt \
     libdbus-1-dev \
     libglib2.0-dev \
     pkg-config \
