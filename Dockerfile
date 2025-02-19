@@ -6,6 +6,7 @@ WORKDIR /app
 
 # Install system dependencies required for some Python packages
 RUN apt-get update && apt-get install -y \
+    python3-apt \
     libdbus-1-dev \
     libglib2.0-dev \
     pkg-config \
@@ -13,7 +14,6 @@ RUN apt-get update && apt-get install -y \
     libgirepository1.0-dev \
     gir1.2-glib-2.0 \
     python3-gi \
-    python3-apt \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
