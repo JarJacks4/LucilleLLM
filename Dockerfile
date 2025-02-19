@@ -24,6 +24,9 @@ RUN pip install --no-cache-dir --upgrade pip --root-user-action=ignore \
     && pip install --no-cache-dir --no-deps -r requirements.txt \
     && pip install --no-cache-dir --upgrade --use-deprecated=legacy-resolver -r requirements.txt
 
+# Install missing sentence-transformers package separately
+RUN pip install --no-cache-dir sentence-transformers
+
 # Verify that there are no dependency issues
 RUN pip check || echo "Warning: Some dependencies may have conflicts."
 
