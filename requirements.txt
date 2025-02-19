@@ -173,7 +173,6 @@ PyJWT==2.7.0
 pylint==3.3.3
 pymongo==4.10.1
 pyparsing==3.2.1
-python-apt
 python-dateutil==2.9.0.post0
 python-dotenv==1.0.1
 python-jsonrpc-server==0.4.0
