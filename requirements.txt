@@ -130,7 +130,7 @@ namex==0.0.8
 nbclient==0.10.2
 nbconvert==7.16.6
 nbformat==5.10.4
-numpy==2.2.3
+numpy>=1.26.0, <2.1.0
 nvidia-cusparselt-cu12==0.6.2
 nvidia-nvjitlink-cu12==12.4.127
 nvidia-nvtx-cu12==12.4.127
