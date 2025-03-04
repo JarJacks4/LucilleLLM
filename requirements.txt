@@ -1,1 +1,12 @@
+fastapi
+uvicorn
+openai
+sentence-transformers
+numpy
+pandas
+requests
+faiss-cpu
+langchain
+mangum
+jinja2
 
