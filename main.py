@@ -37,6 +37,9 @@ from pydantic import ValidationError
 # from langchain.schema import HumanMessage, AIMessage
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
+import os
+import firebase_admin
+from firebase_admin import credentials, storage
 # # Add this middleware to your FastAPI app
 
 
@@ -68,9 +71,26 @@ app.add_middleware(
 embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
 hf = HuggingFaceEmbeddings(model_name=embedding_model_name)
 
-path = "C:/Users/siddh/Downloads/LucilleLLM-main/faiss_vecdb"
+cred = credentials.Certificate(
+    "escape-ujuzxr-firebase-adminsdk-he895-1a039bd95a.json"
+)
+firebase_admin.initialize_app(cred, {
+    'storageBucket': 'escape-ujuzxr.appspot.com'
+})
+bucket = storage.bucket()
+
+folder_prefix = 'faiss_vecdb/'
+
+# List all blobs (files) under the folder prefix
+blobs = bucket.list_blobs(prefix=folder_prefix)
+
+# Create a local directory to download the files, if it doesn't exist
+local_download_path = './faiss_vecdb'
+os.makedirs(local_download_path, exist_ok=True)
+
+
 VectorStore = FAISS.load_local(
-    path, embeddings=hf, allow_dangerous_deserialization=True)
+    local_download_path, embeddings=hf, allow_dangerous_deserialization=True)
 print("FAISS vectorstore loaded successfully")
 # Load the list from the .pkl file
 with open('texts.pkl', 'rb') as file:
