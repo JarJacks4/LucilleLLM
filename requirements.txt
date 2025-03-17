@@ -9,4 +9,6 @@ faiss-cpu
 langchain
 mangum
 jinja2
-
+langchain_community
+langchain_openai
+firebase_admin
