@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, Request, HTTPException, Cookie
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -43,7 +46,10 @@ from firebase_admin import credentials, storage
 # # Add this middleware to your FastAPI app
 
 
-os.environ["OPENAI_API_KEY"] = "sk-proj-t5GY3pUWUxjh4mZLGWUxT3BlbkFJmQ2aJzbx24KyMdvAnXjf"
+load_dotenv()
+openai_api_key = os.getenv("OPENAI_API_KEY")
+os.environ["OPENAI_API_KEY"] = openai_api_key
+
 app = FastAPI()
 client = OpenAI()
 
@@ -71,9 +77,9 @@ app.add_middleware(
 embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
 hf = HuggingFaceEmbeddings(model_name=embedding_model_name)
 
-cred = credentials.Certificate(
-    "escape-ujuzxr-firebase-adminsdk-he895-1a039bd95a.json"
-)
+firebase_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+cred = credentials.Certificate(firebase_path)
+
 firebase_admin.initialize_app(cred, {
     'storageBucket': 'escape-ujuzxr.appspot.com'
 })
