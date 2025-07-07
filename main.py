@@ -13,6 +13,7 @@ import uuid
 import pickle
 import os
 import firebase_admin
+from collections import defaultdict
 from firebase_admin import credentials, storage
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
@@ -32,18 +33,19 @@ from langchain.agents import create_tool_calling_agent, AgentExecutor
 from langchain_openai import ChatOpenAI
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
 
 # ✅ Load environment variables from .env
 load_dotenv()
 os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
 # ✅ Firebase setup from env
-firebase_creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-cred = credentials.Certificate(firebase_creds_path)
-firebase_admin.initialize_app(cred, {
-    'storageBucket': 'escape-ujuzxr.appspot.com'
-})
-bucket = storage.bucket()
+# firebase_creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+# cred = credentials.Certificate(firebase_creds_path)
+# firebase_admin.initialize_app(cred, {
+#     'storageBucket': 'escape-ujuzxr.appspot.com'
+# })
+# bucket = storage.bucket()
 
 # ✅ FastAPI setup
 app = FastAPI()
@@ -73,15 +75,23 @@ print("FAISS vectorstore loaded successfully")
 with open('texts.pkl', 'rb') as file:
     docs = pickle.load(file)
 
-retriever = VectorStore.as_retriever()
+retriever = VectorStore.as_retriever(
+    # using MMR: Maximal marginal relevance
+    search_type="mmr",  
+    search_kwargs={
+        "k": 3,
+        "fetch_k": 10,         # how many initial candidates to consider
+        "lambda_mult": 0.7     # higher = more relevance, lower = more diversity
+    }
+)
 retriever_tool = create_retriever_tool(
     retriever,
     "selfcare_search",
-    "Search for information about self-care and wellbeing. For any questions about self-care and wellbeing, you must use this tool!",
+    "Search for information about self-care and wellbeing. For any questions about self-care and wellbeing, you MUST use this tool!",
 )
 tools = [retriever_tool]
 
-llm = ChatOpenAI(model="gpt-4", temperature=0)
+llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 system_message_prompt = SystemMessagePromptTemplate.from_template(
     "You are a self-care expert and helpful assistant. Your name is Lucille and you answer people's queries regarding self care and well being. But you are NOT a medical doctor so always add a disclaimer where required and refrain from giving medical advice. If someone is suicidal, refer them to suicide helplines."
 )
@@ -95,11 +105,12 @@ chat_prompt = ChatPromptTemplate.from_messages([
 
 agent = create_tool_calling_agent(llm, tools, chat_prompt)
 agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
-message_history = ChatMessageHistory()
+
+session_histories: Dict[str, BaseChatMessageHistory] = defaultdict(ChatMessageHistory)
 
 agent_with_chat_history = RunnableWithMessageHistory(
     agent_executor,
-    lambda session_id: message_history,
+    lambda session_id: session_histories[session_id],
     input_messages_key="input",
     history_messages_key="chat_history",
 )
@@ -115,18 +126,18 @@ class ChatResponse(BaseModel):
     class Config:
         arbitrary_types_allowed = True
 
-def search(query: str, k: int = 8, thresh: float = 0.8):
-    embedded_query = np.asarray(hf.embed_documents([query]))
-    scores, inds = VectorStore.index.search(embedded_query, k=k)
-    return [docs[i].page_content for i, s in zip(inds[0], scores[0]) if s <= thresh and s >= 0]
+# def search(query: str, k: int = 8, thresh: float = 0.8):
+#     embedded_query = np.asarray(hf.embed_documents([query]))
+#     scores, inds = VectorStore.index.search(embedded_query, k=k)
+#     return [docs[i].page_content for i, s in zip(inds[0], scores[0]) if s <= thresh and s >= 0]
 
-session_conversations = {}
+# session_conversations = {}
 
-def add_message_to_session(session_id, message):
-    session_conversations.setdefault(session_id, []).append(message)
+# def add_message_to_session(session_id, message):
+#     session_conversations.setdefault(session_id, []).append(message)
 
-def get_conversation_for_session(session_id):
-    return session_conversations.get(session_id, [])
+# def get_conversation_for_session(session_id):
+#     return session_conversations.get(session_id, [])
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
@@ -144,7 +155,7 @@ async def chat(request: ChatRequest):
             for m in resp['chat_history']
         ]
 
-        add_message_to_session(session_id, bot_response)
+        # add_message_to_session(session_id, bot_response)
 
         return ChatResponse(
             session_id=session_id,
@@ -173,9 +184,15 @@ async def chat_page(request: Request):
 @app.get("/chat/{session_id}", response_model=ChatResponse)
 async def get_chat_history(session_id: str):
     try:
-        conversation_history = get_conversation_for_session(session_id)
-        if not conversation_history:
+        # conversation_history = get_conversation_for_session(session_id)
+        history = session_histories.get(session_id)
+        if not history:
             raise HTTPException(status_code=404, detail="No chat history found.")
+
+        conversation_history = [msg.content for msg in history.messages]
+
+        # if not conversation_history:
+        #     raise HTTPException(status_code=404, detail="No chat history found.")
         return ChatResponse(
             session_id=session_id,
             response="Chat history retrieved successfully",
