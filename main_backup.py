@@ -57,7 +57,7 @@ def get_openai_api_key():
         if project_id:
             secret_name = f"projects/{project_id}/secrets/openai-api-key/versions/latest"
             response = client.access_secret_version(request={"name": secret_name})
-            return response.payload.data.decode("UTF-8").strip()
+            return response.payload.data.decode("UTF-8")
     except Exception as e:
         print(f"Warning: Could not load from Secret Manager: {e}")
     
@@ -84,33 +84,16 @@ def _resolve_openai_key() -> str:
             client_sm = secretmanager.SecretManagerServiceClient()
             name = f"projects/{project_id}/secrets/openai-api-key/versions/latest"
             resp = client_sm.access_secret_version(request={"name": name})
-            return resp.payload.data.decode("utf-8").strip()
+            return resp.payload.data.decode("utf-8")
     except Exception as e:
         print(f"Warning: Could not resolve OPENAI_API_KEY via Secret Manager: {e}")
     return ""
 
 openai_api_key = _resolve_openai_key()
 if openai_api_key:
-    os.environ["OPENAI_API_KEY"] = openai_api_key.strip()
+    os.environ["OPENAI_API_KEY"] = openai_api_key
 else:
     print("Warning: No OpenAI API key found!")
-
-# Fail fast if no key
-if not os.getenv("OPENAI_API_KEY"):
-    raise RuntimeError("OPENAI_API_KEY not set")
-
-# A single reusable HTTP client with explicit timeouts + retries
-import httpx
-from openai import OpenAI, APIConnectionError, RateLimitError
-
-_httpx_client = httpx.Client(
-    timeout=httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=30.0),
-)
-
-openai_client = OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY").strip() if os.getenv("OPENAI_API_KEY") else None,
-    http_client=_httpx_client
-)
 
 openai_model = "gpt-4o-mini"
 # ✅ FastAPI setup
@@ -164,7 +147,7 @@ def count_tokens(text: str) -> int:
 
 session_summaries: Dict[str, str] = defaultdict(str)
 
-summary_llm = ChatOpenAI(model=openai_model, temperature=0, request_timeout=120, max_retries=3)
+summary_llm = ChatOpenAI(model=openai_model, temperature=0)
 summarize_chain = load_summarize_chain(
     llm=summary_llm,
     chain_type="refine"
@@ -187,7 +170,7 @@ retriever_tool = create_retriever_tool(
 )
 tools = [retriever_tool]
 
-llm = ChatOpenAI(model=openai_model, temperature=0, request_timeout=120, max_retries=3)
+llm = ChatOpenAI(model=openai_model, temperature=0)
 system_message_prompt = SystemMessagePromptTemplate.from_template(
     # "You are a self-care expert and helpful assistant. Your name is Lucille and you answer people's queries regarding self care and well being. But you are NOT a medical doctor so always add a disclaimer where required and refrain from giving medical advice. If someone is suicidal, refer them to suicide helplines."
     "You are a self-care expert and helpful assistant named Lucille. "
@@ -251,71 +234,43 @@ async def chat(request: ChatRequest):
             summary = session_summaries.get(session_id, "")
             existing_session = None
 
-        # Step 2: Create system prompt with summary if it exists
-        system_prompt = "You are a self-care expert and helpful assistant named Lucille. Always format your responses in **Markdown** using bold, italic, lists, and line breaks where appropriate for better readability. You are NOT a medical doctor, so always add a disclaimer where needed and refrain from giving medical advice. If someone is suicidal, refer them to suicide helplines immediately."
-        
+        # Step 2: Inject summary if it exists
         if summary:
-            system_prompt = summary + "\n\n" + system_prompt
-
-        # Step 3: Get chat history for context
-        chat_history = session_histories.get(session_id, ChatMessageHistory())
-        history_messages = []
-        for msg in chat_history.messages[-6:]:  # Last 6 messages for context
-            if isinstance(msg, HumanMessage):
-                history_messages.append({"role": "user", "content": msg.content})
-            elif isinstance(msg, AIMessage):
-                history_messages.append({"role": "assistant", "content": msg.content})
-
-        # Step 4: Create messages for OpenAI
-        messages = [{"role": "system", "content": system_prompt}]
-        messages.extend(history_messages)
-        messages.append({"role": "user", "content": prompt})
-
-        # Step 5: Call OpenAI directly (simpler than LangChain agent)
-        try:
-            response = openai_client.chat.completions.create(
-                model=openai_model,
-                messages=messages,
-                max_tokens=1000,
-                temperature=0.7
+            system_prompt_with_summary = SystemMessage(content=summary + "\n\n" + 
+                "You are a self-care expert and helpful assistant named Lucille. "
+                "Always format your responses in **Markdown** using bold, italic, lists, and line breaks where appropriate for better readability. "
+                "You are NOT a medical doctor, so always add a disclaimer where needed and refrain from giving medical advice. "
+                "If someone is suicidal, refer them to suicide helplines immediately."
             )
-            bot_response = response.choices[0].message.content
-        except APIConnectionError as e:
-            # Surface a clearer, actionable error
-            print(f"❌ OpenAI network error: {e}")
-            raise HTTPException(status_code=502, detail=f"OpenAI network error: {e}")
-        except RateLimitError as e:
-            print(f"❌ OpenAI rate limit: {e}")
-            raise HTTPException(status_code=429, detail="OpenAI rate limit hit")
-        except Exception as e:
-            print(f"❌ OpenAI API call failed: {e}")
-            raise HTTPException(status_code=500, detail=f"OpenAI API error: {e}")
+            chat_prompt.messages[0] = system_prompt_with_summary  # update first prompt dynamically
 
-        # Step 6: Update chat history
-        chat_history.add_user_message(prompt)
-        chat_history.add_ai_message(bot_response)
-        session_histories[session_id] = chat_history
+        # Step 3: Run Lucille
+        resp = agent_with_chat_history.invoke(
+            {"input": prompt},
+            config={"configurable": {"session_id": session_id}},
+        )
+        bot_response = resp['output']
 
-        # Step 7: Reconstruct conversation for response
-        conversation_strings = [prompt, bot_response]
+        # Step 4: Reconstruct full conversation
+        conversation_strings = [
+            m.content if isinstance(m, (HumanMessage, AIMessage)) else str(m)
+            for m in resp['chat_history']
+        ]
+        full_text = "\n".join(conversation_strings)
 
-        # Step 8: Summarize if over token limit
-        full_text = prompt + " " + bot_response
+        # Step 5: Summarize if over token limit
         if count_tokens(full_text) > 8000:
             print("🔁 Summarizing chat history...")
-            try:
-                documents = [Document(page_content=full_text)]
-                refined_summary = summarize_chain.run(documents)
-                session_summaries[session_id] = refined_summary
-                
-                # Update summary in Firebase
-                firebase_service.update_session_summary(session_id, refined_summary)
-            except Exception as e:
-                print(f"⚠️ Summarization failed: {e}")
+            documents = [Document(page_content=chunk) for chunk in conversation_strings]
+            refined_summary = summarize_chain.run(documents)
+            session_summaries[session_id] = refined_summary  # Store the summary
+            
+            # Update summary in Firebase
+            firebase_service.update_session_summary(session_id, refined_summary)
 
-        # Step 9: Store/Update session in Firebase
+        # Step 6: Store/Update session in Firebase
         try:
-            current_messages = chat_history.messages
+            current_messages = session_histories[session_id].messages
             current_summary = session_summaries.get(session_id, "")
             
             if existing_session:
@@ -328,7 +283,7 @@ async def chat(request: ChatRequest):
             print(f"⚠️ Failed to store session in Firebase: {e}")
             # Continue without Firebase storage
 
-        # Step 10: Return response
+        # Step 7: Return response
         return ChatResponse(
             session_id=session_id,
             response=bot_response,
@@ -449,133 +404,3 @@ async def global_exception_handler(request: Request, exc: Exception):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)
-
-@app.post("/chat-simple", response_model=ChatResponse)
-async def chat_simple(request: ChatRequest):
-    """Simplified chat endpoint that bypasses the agent"""
-    try:
-        prompt = request.message
-        session_id = request.session_id
-        
-        # Simple direct LLM call
-        try:
-            response = llm.invoke(f"You are Lucille, a self-care expert. User: {prompt}")
-            bot_response = response.content
-        except Exception as e:
-            print(f"❌ OpenAI API call failed: {e}")
-            raise HTTPException(status_code=500, detail=f"OpenAI API error: {str(e)}")
-
-        return ChatResponse(
-            session_id=session_id,
-            response=bot_response,
-            conversation=[prompt, bot_response]
-        )
-
-    except Exception as e:
-        print(f"❌ Error in simple chat endpoint: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-
-@app.post("/chat-no-firebase", response_model=ChatResponse)
-async def chat_no_firebase(request: ChatRequest):
-    """Chat endpoint without Firebase integration"""
-    try:
-        prompt = request.message
-        session_id = request.session_id
-        
-        # Simple direct LLM call without Firebase
-        try:
-            response = llm.invoke(f"You are Lucille, a self-care expert. User: {prompt}")
-            bot_response = response.content
-        except Exception as e:
-            print(f"❌ OpenAI API call failed: {e}")
-            raise HTTPException(status_code=500, detail=f"OpenAI API error: {str(e)}")
-
-        return ChatResponse(
-            session_id=session_id,
-            response=bot_response,
-            conversation=[prompt, bot_response]
-        )
-
-    except Exception as e:
-        print(f"❌ Error in no-firebase chat endpoint: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-
-@app.get("/debug-api-key")
-async def debug_api_key():
-    """Debug endpoint to check if OpenAI API key is being read correctly"""
-    try:
-        api_key = os.getenv("OPENAI_API_KEY")
-        if api_key:
-            # Show first 10 and last 4 characters
-            masked_key = f"{api_key[:10]}...{api_key[-4:]}"
-            return {"status": "success", "api_key_found": True, "masked_key": masked_key, "length": len(api_key)}
-        else:
-            return {"status": "error", "api_key_found": False, "message": "No API key found in environment"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-@app.get("/test-openai-get")
-async def test_openai_get():
-    """Test direct OpenAI API call to isolate DNS/TLS issues"""
-    import requests
-    try:
-        api_key = os.getenv('OPENAI_API_KEY')
-        if api_key:
-            api_key = api_key.strip()
-        headers = {"Authorization": f"Bearer {api_key}"}
-        r = requests.get("https://api.openai.com/v1/models", headers=headers, timeout=10)
-        return {"status": r.status_code, "ok": r.ok, "response": r.text[:200]}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
-
-@app.get("/test-dns")
-async def test_dns():
-    """Test DNS resolution for OpenAI API"""
-    import socket
-    try:
-        ip = socket.gethostbyname("api.openai.com")
-        return {"api.openai.com": ip, "status": "success"}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
-
-
-
-@app.post("/test-direct-openai")
-async def test_direct_openai():
-    """Test direct OpenAI API call without LangChain"""
-    try:
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": "Say hello"}],
-            max_tokens=50
-        )
-        
-        return {"status": "success", "response": response.choices[0].message.content}
-    except APIConnectionError as e:
-        return {"status": "connection_error", "error": str(e)}
-    except RateLimitError as e:
-        return {"status": "rate_limit", "error": str(e)}
-    except Exception as e:
-        return {"status": "error", "error": str(e)}
-
-
-
-@app.get("/test-connectivity")
-async def test_connectivity():
-    """Test basic internet connectivity"""
-    try:
-        import requests
-        
-        # Test basic internet connectivity
-        response = requests.get("https://httpbin.org/get", timeout=10)
-        if response.status_code == 200:
-            return {"status": "success", "internet": "working", "response": response.json()}
-        else:
-            return {"status": "error", "internet": "failed", "status_code": response.status_code}
-    except Exception as e:
-        return {"status": "error", "internet": "failed", "error": str(e)}
-

@@ -14,10 +14,19 @@ RUN apt-get update && apt-get install -y \
     gir1.2-glib-2.0 \
     python3-gi \
     build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && update-ca-certificates
 
 # Copy the application files to the container
 COPY . /app
+
+# Ensure Firebase service account file is properly set
+RUN if [ -f "escape-ujuzxr-firebase-adminsdk-he895-1a039bd95a.json" ]; then \
+        echo "Firebase service account file found"; \
+    else \
+        echo "Warning: Firebase service account file not found"; \
+    fi
 
 # Upgrade pip and install dependencies efficiently
 RUN pip install --no-cache-dir --upgrade pip --root-user-action=ignore \
