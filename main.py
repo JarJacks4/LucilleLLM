@@ -1,54 +1,102 @@
-from fastapi import FastAPI, Request, HTTPException, Cookie, status
+"""
+LucilleLLM - Self-Care Chatbot API
+
+A FastAPI-based chatbot that provides self-care advice and wellbeing support.
+Features OpenAI integration, FAISS vector search, and Firebase session management.
+"""
+
+from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.responses import JSONResponse, HTMLResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
 from typing import List, Dict
-from openai import OpenAI
 from dotenv import load_dotenv
-import numpy as np
-import uuid
-import pickle
 import os
-import firebase_admin
-from firebase_admin import credentials, storage
-from langchain_community.embeddings import HuggingFaceEmbeddings
+import uuid
+from collections import defaultdict
+
+# OpenAI and LangChain imports
+from openai import OpenAI, APIConnectionError, RateLimitError
+from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS
-from langchain.tools.retriever import create_retriever_tool
-from langchain_core.prompts import ChatPromptTemplate
-from langchain.prompts.chat import (
-    SystemMessagePromptTemplate,
-    HumanMessagePromptTemplate,
-    MessagesPlaceholder,
-)
-from langchain.schema import (
-    AIMessage,
-    HumanMessage,
-    SystemMessage,
-)
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_openai import ChatOpenAI
 from langchain_community.chat_message_histories import ChatMessageHistory
-from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
+from langchain.schema import AIMessage, HumanMessage
+from langchain.chains.summarize import load_summarize_chain
+from langchain_core.documents import Document
+import tiktoken
+import httpx
 
-# ✅ Load environment variables from .env
+# Local imports
+from firebase_service import get_firebase_service
+
+# Load environment variables
 load_dotenv()
-os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
-# ✅ Firebase setup from env
-firebase_creds_path = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-cred = credentials.Certificate(firebase_creds_path)
-firebase_admin.initialize_app(cred, {
-    'storageBucket': 'escape-ujuzxr.appspot.com'
-})
-bucket = storage.bucket()
+def get_openai_api_key():
+    """Get OpenAI API key from environment or Google Secret Manager"""
+    # Try local environment first
+    api_key = os.getenv("OPENAI_API_KEY")
+    if api_key:
+        return api_key.strip()
+    
+    # Try Google Secret Manager in production
+    try:
+        from google.cloud import secretmanager
+        import google.auth
+        
+        client = secretmanager.SecretManagerServiceClient()
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+        
+        # If no project ID set, try to infer it
+        if not project_id:
+            try:
+                creds, inferred_project = google.auth.default()
+                if inferred_project:
+                    project_id = inferred_project
+            except Exception:
+                pass
+        
+        if project_id:
+            secret_name = f"projects/{project_id}/secrets/openai-api-key/versions/latest"
+            response = client.access_secret_version(request={"name": secret_name})
+            return response.payload.data.decode("UTF-8").strip()
+    except Exception as e:
+        print(f"Warning: Could not load from Secret Manager: {e}")
+    
+    return None
 
-# ✅ FastAPI setup
-app = FastAPI()
-client = OpenAI()
+# Initialize OpenAI API key
+openai_api_key = get_openai_api_key()
+if not openai_api_key:
+    raise RuntimeError("OPENAI_API_KEY not set. Please set it in environment or Google Secret Manager.")
 
+os.environ["OPENAI_API_KEY"] = openai_api_key
+
+# Initialize OpenAI client with proper timeout configuration
+_httpx_client = httpx.Client(
+    timeout=httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=30.0),
+)
+
+openai_client = OpenAI(
+    api_key=openai_api_key,
+    http_client=_httpx_client
+)
+
+# Configuration
+OPENAI_MODEL = "gpt-4o-mini"
+EMBEDDING_MODEL = "text-embedding-3-small"
+FAISS_INDEX_PATH = './faiss_vecdb'
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="LucilleLLM API",
+    description="Self-care chatbot API providing wellbeing support and advice",
+    version="1.0.0"
+)
+
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://app.swaggerhub.com"],
@@ -57,53 +105,41 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ✅ Embeddings and Vector DB
-embedding_model_name = "sentence-transformers/all-MiniLM-L6-v2"
-hf = HuggingFaceEmbeddings(model_name=embedding_model_name)
-
-folder_prefix = 'faiss_vecdb/'
-local_download_path = './faiss_vecdb'
-os.makedirs(local_download_path, exist_ok=True)
-
-VectorStore = FAISS.load_local(
-    local_download_path, embeddings=hf, allow_dangerous_deserialization=True
-)
-print("FAISS vectorstore loaded successfully")
-
-with open('texts.pkl', 'rb') as file:
-    docs = pickle.load(file)
-
-retriever = VectorStore.as_retriever()
-retriever_tool = create_retriever_tool(
-    retriever,
-    "selfcare_search",
-    "Search for information about self-care and wellbeing. For any questions about self-care and wellbeing, you must use this tool!",
-)
-tools = [retriever_tool]
-
-llm = ChatOpenAI(model="gpt-4", temperature=0)
-system_message_prompt = SystemMessagePromptTemplate.from_template(
-    "You are a self-care expert and helpful assistant. Your name is Lucille and you answer people's queries regarding self care and well being. But you are NOT a medical doctor so always add a disclaimer where required and refrain from giving medical advice. If someone is suicidal, refer them to suicide helplines."
-)
-human_message_prompt = HumanMessagePromptTemplate.from_template("{input}")
-chat_prompt = ChatPromptTemplate.from_messages([
-    system_message_prompt,
-    MessagesPlaceholder(variable_name="chat_history"),
-    human_message_prompt,
-    MessagesPlaceholder(variable_name="agent_scratchpad")
-])
-
-agent = create_tool_calling_agent(llm, tools, chat_prompt)
-agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
-message_history = ChatMessageHistory()
-
-agent_with_chat_history = RunnableWithMessageHistory(
-    agent_executor,
-    lambda session_id: message_history,
-    input_messages_key="input",
-    history_messages_key="chat_history",
+# Initialize embeddings and vector store
+embeddings_model = OpenAIEmbeddings(
+    model=EMBEDDING_MODEL,
+    openai_api_key=openai_api_key,
 )
 
+def load_faiss_vectorstore(local_path: str) -> FAISS:
+    """Load FAISS index from disk"""
+    os.makedirs(local_path, exist_ok=True)
+    vs = FAISS.load_local(local_path, embeddings=embeddings_model, allow_dangerous_deserialization=True)
+    print(f"✅ Loaded FAISS vector store (dimension: {vs.index.d})")
+    return vs
+
+# Load vector store
+VectorStore = load_faiss_vectorstore(FAISS_INDEX_PATH)
+
+# Initialize tokenizer for token counting
+try:
+    tokenizer = tiktoken.encoding_for_model(OPENAI_MODEL)
+except KeyError:
+    tokenizer = tiktoken.get_encoding("cl100k_base")
+
+def count_tokens(text: str) -> int:
+    """Count tokens in text"""
+    return len(tokenizer.encode(text))
+
+# Session management
+session_histories: Dict[str, BaseChatMessageHistory] = defaultdict(ChatMessageHistory)
+session_summaries: Dict[str, str] = defaultdict(str)
+
+# Initialize summarization chain
+summary_llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0, request_timeout=120, max_retries=3)
+summarize_chain = load_summarize_chain(llm=summary_llm, chain_type="refine")
+
+# Request/Response models
 class ChatRequest(BaseModel):
     message: str
     session_id: str
@@ -112,78 +148,267 @@ class ChatResponse(BaseModel):
     session_id: str
     response: str
     conversation: List[str]
-    class Config:
-        arbitrary_types_allowed = True
 
-def search(query: str, k: int = 8, thresh: float = 0.8):
-    embedded_query = np.asarray(hf.embed_documents([query]))
-    scores, inds = VectorStore.index.search(embedded_query, k=k)
-    return [docs[i].page_content for i, s in zip(inds[0], scores[0]) if s <= thresh and s >= 0]
-
-session_conversations = {}
-
-def add_message_to_session(session_id, message):
-    session_conversations.setdefault(session_id, []).append(message)
-
-def get_conversation_for_session(session_id):
-    return session_conversations.get(session_id, [])
-
+# Main chat endpoint
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
+    """Main chat endpoint with Firebase session management"""
     try:
         prompt = request.message
         session_id = request.session_id
-        resp = agent_with_chat_history.invoke(
-            {"input": prompt},
-            config={"configurable": {"session_id": session_id}},
+        
+        # Initialize Firebase service
+        firebase_service = get_firebase_service()
+
+        # Load existing session from Firebase if it exists
+        try:
+            existing_session = firebase_service.get_chat_session(session_id)
+            if existing_session:
+                summary = existing_session.get('summary', '')
+                session_summaries[session_id] = summary
+                print(f"📱 Loaded existing session {session_id} from Firebase")
+            else:
+                summary = session_summaries.get(session_id, "")
+        except Exception as e:
+            print(f"⚠️ Failed to load session from Firebase: {e}")
+            summary = session_summaries.get(session_id, "")
+            existing_session = None
+
+        # Create system prompt with summary if it exists
+        system_prompt = (
+            "You are Lucille, a self-care expert and helpful assistant. "
+            "Always format your responses in **Markdown** using bold, italic, lists, and line breaks for better readability. "
+            "You are NOT a medical doctor, so always add a disclaimer where needed and refrain from giving medical advice. "
+            "If someone is suicidal, refer them to suicide helplines immediately."
         )
-        bot_response = resp['output']
+        
+        if summary:
+            system_prompt = f"{summary}\n\n{system_prompt}"
 
-        conversation_strings = [
-            m.content if isinstance(m, (HumanMessage, AIMessage)) else str(m)
-            for m in resp['chat_history']
-        ]
+        # Get chat history for context
+        chat_history = session_histories.get(session_id, ChatMessageHistory())
+        history_messages = []
+        for msg in chat_history.messages[-6:]:  # Last 6 messages for context
+            if isinstance(msg, HumanMessage):
+                history_messages.append({"role": "user", "content": msg.content})
+            elif isinstance(msg, AIMessage):
+                history_messages.append({"role": "assistant", "content": msg.content})
 
-        add_message_to_session(session_id, bot_response)
+        # Create messages for OpenAI
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(history_messages)
+        messages.append({"role": "user", "content": prompt})
+
+        # Call OpenAI API
+        try:
+            response = openai_client.chat.completions.create(
+                model=OPENAI_MODEL,
+                messages=messages,
+                max_tokens=1000,
+                temperature=0.7
+            )
+            bot_response = response.choices[0].message.content
+        except APIConnectionError as e:
+            print(f"❌ OpenAI network error: {e}")
+            raise HTTPException(status_code=502, detail=f"OpenAI network error: {e}")
+        except RateLimitError as e:
+            print(f"❌ OpenAI rate limit: {e}")
+            raise HTTPException(status_code=429, detail="OpenAI rate limit hit")
+        except Exception as e:
+            print(f"❌ OpenAI API call failed: {e}")
+            raise HTTPException(status_code=500, detail=f"OpenAI API error: {e}")
+
+        # Update chat history
+        chat_history.add_user_message(prompt)
+        chat_history.add_ai_message(bot_response)
+        session_histories[session_id] = chat_history
+
+        # Reconstruct conversation for response
+        conversation_strings = [prompt, bot_response]
+
+        # Summarize if over token limit
+        full_text = f"{prompt} {bot_response}"
+        if count_tokens(full_text) > 8000:
+            print("🔁 Summarizing chat history...")
+            try:
+                documents = [Document(page_content=full_text)]
+                refined_summary = summarize_chain.run(documents)
+                session_summaries[session_id] = refined_summary
+                
+                # Update summary in Firebase
+                firebase_service.update_session_summary(session_id, refined_summary)
+            except Exception as e:
+                print(f"⚠️ Summarization failed: {e}")
+
+        # Store/Update session in Firebase
+        try:
+            current_messages = chat_history.messages
+            current_summary = session_summaries.get(session_id, "")
+            
+            if existing_session:
+                firebase_service.update_chat_session(session_id, current_messages, current_summary)
+            else:
+                firebase_service.store_chat_session(session_id, current_messages, current_summary)
+        except Exception as e:
+            print(f"⚠️ Failed to store session in Firebase: {e}")
 
         return ChatResponse(
             session_id=session_id,
             response=bot_response,
             conversation=conversation_strings
         )
+
     except Exception as e:
+        print(f"❌ Error in chat endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    """Health check endpoint to verify Firebase connectivity"""
+    try:
+        firebase_service = get_firebase_service()
+        # Try a simple operation to verify connectivity
+        sessions = firebase_service.list_sessions(limit=1)
+        return {
+            "status": "healthy",
+            "firebase": "connected",
+            "vector_store": "loaded",
+            "model": OPENAI_MODEL
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "firebase": "disconnected",
+            "error": str(e)
+        }
+
+# Root endpoint
 @app.get("/")
 async def root():
+    """Root endpoint that generates a new session ID"""
     session_id = str(uuid.uuid4())
     response = JSONResponse(content={"session_id": session_id})
     response.set_cookie(key="session_id", value=session_id)
     return response
 
-@app.get("/chats/", response_class=HTMLResponse)
-async def chat_page(request: Request):
+# Chat interface
+@app.get("/chat-interface", response_class=HTMLResponse)
+async def chat_interface():
+    """Simple HTML chat interface"""
     return HTMLResponse(content="""
     <!DOCTYPE html>
-    <html><head><title>Chat with Lucille</title></head>
-    <body><h2>Lucille Chat Interface</h2><p>Use the POST `/chat` endpoint to talk to Lucille.</p></body>
+    <html>
+    <head>
+        <title>Lucille - Self-Care Chatbot</title>
+        <style>
+            body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+            .chat-container { border: 1px solid #ddd; height: 400px; overflow-y: auto; padding: 20px; margin: 20px 0; }
+            .input-container { display: flex; gap: 10px; }
+            input[type="text"] { flex: 1; padding: 10px; font-size: 16px; }
+            button { padding: 10px 20px; font-size: 16px; background: #007bff; color: white; border: none; cursor: pointer; }
+        </style>
+    </head>
+    <body>
+        <h1>Lucille - Self-Care Chatbot</h1>
+        <p>Welcome! I'm here to help with self-care and wellbeing advice.</p>
+        <div class="chat-container" id="chatContainer"></div>
+        <div class="input-container">
+            <input type="text" id="messageInput" placeholder="Type your message here..." />
+            <button onclick="sendMessage()">Send</button>
+        </div>
+        
+        <script>
+            let sessionId = Math.random().toString(36).substring(7);
+            
+            async function sendMessage() {
+                const input = document.getElementById('messageInput');
+                const message = input.value.trim();
+                if (!message) return;
+                
+                const chatContainer = document.getElementById('chatContainer');
+                chatContainer.innerHTML += `<div><strong>You:</strong> ${message}</div>`;
+                input.value = '';
+                
+                try {
+                    const response = await fetch('/chat', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ message: message, session_id: sessionId })
+                    });
+                    
+                    const data = await response.json();
+                    chatContainer.innerHTML += `<div><strong>Lucille:</strong> ${data.response}</div>`;
+                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                } catch (error) {
+                    chatContainer.innerHTML += `<div style="color: red;"><strong>Error:</strong> ${error.message}</div>`;
+                }
+            }
+            
+            document.getElementById('messageInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') sendMessage();
+            });
+        </script>
+    </body>
     </html>
     """)
 
+# Session management endpoints
 @app.get("/chat/{session_id}", response_model=ChatResponse)
 async def get_chat_history(session_id: str):
+    """Retrieve chat history for a session"""
     try:
-        conversation_history = get_conversation_for_session(session_id)
-        if not conversation_history:
+        firebase_service = get_firebase_service()
+        session_data = firebase_service.get_chat_session(session_id)
+        
+        if not session_data:
             raise HTTPException(status_code=404, detail="No chat history found.")
+
+        messages = session_data.get('messages', [])
+        conversation_history = [msg.get('content', '') for msg in messages]
+
         return ChatResponse(
             session_id=session_id,
             response="Chat history retrieved successfully",
             conversation=conversation_history
         )
     except Exception as e:
+        print(f"❌ Error retrieving chat history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.delete("/chat/{session_id}")
+async def delete_chat_session(session_id: str):
+    """Delete a chat session"""
+    try:
+        firebase_service = get_firebase_service()
+        success = firebase_service.delete_chat_session(session_id)
+        
+        if success:
+            # Clear from memory
+            if session_id in session_histories:
+                del session_histories[session_id]
+            if session_id in session_summaries:
+                del session_summaries[session_id]
+            
+            return {"message": f"Session {session_id} deleted successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="Session not found")
+    except Exception as e:
+        print(f"❌ Error deleting session: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/sessions/")
+async def list_sessions(limit: int = 100):
+    """List recent chat sessions"""
+    try:
+        firebase_service = get_firebase_service()
+        sessions = firebase_service.list_sessions(limit)
+        return {"sessions": sessions, "count": len(sessions)}
+    except Exception as e:
+        print(f"❌ Error listing sessions: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Exception handlers
 @app.exception_handler(ValidationError)
 async def validation_exception_handler(request: Request, exc: ValidationError):
     return JSONResponse(
@@ -198,5 +423,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         content={"detail": str(exc)},
     )
 
+# Development server
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run("main:app", host="0.0.0.0", port=8080, reload=True)
