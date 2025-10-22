@@ -8,6 +8,11 @@ build/
 .env
 *.sqlite3
 
+# Secrets and API Keys
+*.json
+.env.backup
+escape-*-firebase-*.json
+
 # VS Code
 .vscode/
 
