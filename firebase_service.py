@@ -21,7 +21,7 @@ class FirebaseService:
                     print(f"⚠️ Default credentials failed: {e}")
                     
                     # Fallback to service account file
-                    cred_path = "escape-ujuzxr-firebase-adminsdk-he895-1a039bd95a.json"
+                    cred_path = "escape-self-care-ai-firebase-key.json"
                     if os.path.exists(cred_path):
                         try:
                             print(f"🔑 Trying service account file: {cred_path}")

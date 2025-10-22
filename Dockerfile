@@ -22,10 +22,10 @@ RUN apt-get update && apt-get install -y \
 COPY . /app
 
 # Ensure Firebase service account file is properly set
-RUN if [ -f "escape-ujuzxr-firebase-adminsdk-he895-1a039bd95a.json" ]; then \
-        echo "Firebase service account file found"; \
+RUN if [ -f "escape-self-care-ai-firebase-key.json" ]; then \
+        echo "✅ Firebase service account file found"; \
     else \
-        echo "Warning: Firebase service account file not found"; \
+        echo "⚠️ Warning: Firebase service account file not found"; \
     fi
 
 # Upgrade pip and install dependencies efficiently
