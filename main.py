@@ -10,11 +10,12 @@ from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
-from typing import List, Dict
+from typing import List, Dict, Optional
 from dotenv import load_dotenv
 import os
 import uuid
 from collections import defaultdict
+from datetime import datetime
 
 # OpenAI and LangChain imports
 from openai import OpenAI, APIConnectionError, RateLimitError
@@ -96,12 +97,12 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware
+# CORS middleware - Enhanced for FlutterFlow compatibility
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://app.swaggerhub.com"],
+    allow_origins=["*"],  # Allow all origins for FlutterFlow
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -139,6 +140,13 @@ session_summaries: Dict[str, str] = defaultdict(str)
 summary_llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0, request_timeout=120, max_retries=3)
 summarize_chain = load_summarize_chain(llm=summary_llm, chain_type="refine")
 
+# Session validation function
+def validate_session_id(session_id: str) -> str:
+    """Validate and normalize session ID"""
+    if not session_id or session_id == "unique_identifier" or session_id == "null" or session_id == "":
+        return str(uuid.uuid4())
+    return session_id
+
 # Request/Response models
 class ChatRequest(BaseModel):
     message: str
@@ -148,14 +156,18 @@ class ChatResponse(BaseModel):
     session_id: str
     response: str
     conversation: List[str]
+    status: str = "success"
+    timestamp: str = ""
+    message_count: int = 0
 
 # Main chat endpoint
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Main chat endpoint with Firebase session management"""
     try:
+        # Validate and normalize session ID
+        session_id = validate_session_id(request.session_id)
         prompt = request.message
-        session_id = request.session_id
         
         # Initialize Firebase service
         firebase_service = get_firebase_service()
@@ -255,7 +267,10 @@ async def chat(request: ChatRequest):
         return ChatResponse(
             session_id=session_id,
             response=bot_response,
-            conversation=conversation_strings
+            conversation=conversation_strings,
+            status="success",
+            timestamp=datetime.now().isoformat(),
+            message_count=len(chat_history.messages)
         )
 
     except Exception as e:
@@ -288,9 +303,12 @@ async def health_check():
 async def root():
     """Root endpoint that generates a new session ID"""
     session_id = str(uuid.uuid4())
-    response = JSONResponse(content={"session_id": session_id})
-    response.set_cookie(key="session_id", value=session_id)
-    return response
+    return JSONResponse(content={
+        "session_id": session_id,
+        "status": "success",
+        "message": "New session created",
+        "timestamp": datetime.now().isoformat()
+    })
 
 # Chat interface
 @app.get("/chat-interface", response_class=HTMLResponse)
@@ -358,6 +376,8 @@ async def chat_interface():
 async def get_chat_history(session_id: str):
     """Retrieve chat history for a session"""
     try:
+        # Validate session ID
+        session_id = validate_session_id(session_id)
         firebase_service = get_firebase_service()
         session_data = firebase_service.get_chat_session(session_id)
         
@@ -370,7 +390,10 @@ async def get_chat_history(session_id: str):
         return ChatResponse(
             session_id=session_id,
             response="Chat history retrieved successfully",
-            conversation=conversation_history
+            conversation=conversation_history,
+            status="success",
+            timestamp=datetime.now().isoformat(),
+            message_count=len(conversation_history)
         )
     except Exception as e:
         print(f"❌ Error retrieving chat history: {e}")
@@ -380,6 +403,8 @@ async def get_chat_history(session_id: str):
 async def delete_chat_session(session_id: str):
     """Delete a chat session"""
     try:
+        # Validate session ID
+        session_id = validate_session_id(session_id)
         firebase_service = get_firebase_service()
         success = firebase_service.delete_chat_session(session_id)
         
@@ -390,7 +415,12 @@ async def delete_chat_session(session_id: str):
             if session_id in session_summaries:
                 del session_summaries[session_id]
             
-            return {"message": f"Session {session_id} deleted successfully"}
+            return JSONResponse(content={
+                "session_id": session_id,
+                "status": "success",
+                "message": f"Session {session_id} deleted successfully",
+                "timestamp": datetime.now().isoformat()
+            })
         else:
             raise HTTPException(status_code=404, detail="Session not found")
     except Exception as e:
@@ -403,24 +433,81 @@ async def list_sessions(limit: int = 100):
     try:
         firebase_service = get_firebase_service()
         sessions = firebase_service.list_sessions(limit)
-        return {"sessions": sessions, "count": len(sessions)}
+        return JSONResponse(content={
+            "sessions": sessions, 
+            "count": len(sessions),
+            "status": "success",
+            "timestamp": datetime.now().isoformat()
+        })
     except Exception as e:
         print(f"❌ Error listing sessions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# Session validation endpoint
+@app.get("/session/{session_id}/validate")
+async def validate_session(session_id: str):
+    """Validate if a session exists"""
+    try:
+        # Validate session ID format
+        session_id = validate_session_id(session_id)
+        firebase_service = get_firebase_service()
+        session_data = firebase_service.get_chat_session(session_id)
+        
+        return JSONResponse(content={
+            "session_id": session_id,
+            "valid": session_data is not None,
+            "status": "success",
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "session_id": session_id,
+                "valid": False,
+                "status": "error",
+                "message": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+        )
 
 # Exception handlers
 @app.exception_handler(ValidationError)
 async def validation_exception_handler(request: Request, exc: ValidationError):
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content=jsonable_encoder({"detail": exc.errors()}),
+        content={
+            "status": "error",
+            "error_code": 422,
+            "message": "Validation error",
+            "details": jsonable_encoder(exc.errors()),
+            "timestamp": datetime.now().isoformat()
+        }
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "status": "error",
+            "error_code": exc.status_code,
+            "message": exc.detail,
+            "timestamp": datetime.now().isoformat()
+        }
     )
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": str(exc)},
+        content={
+            "status": "error",
+            "error_code": 500,
+            "message": "Internal server error",
+            "details": str(exc),
+            "timestamp": datetime.now().isoformat()
+        }
     )
 
 # Development server
