@@ -26,7 +26,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain.chains.summarize import load_summarize_chain
+from langchain_community.chains.summarize import load_summarize_chain
 from langchain_core.documents import Document
 import tiktoken
 import httpx
