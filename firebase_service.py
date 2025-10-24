@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 from datetime import datetime
 import json
 import os
-from langchain.schema import BaseMessage, HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 
 class FirebaseService:
     def __init__(self):
