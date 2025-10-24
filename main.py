@@ -37,13 +37,12 @@ from firebase_service import get_firebase_service
 # Load environment variables
 load_dotenv()
 
-# Configure logging for production
+# Configure logging for production (Cloud Run compatible)
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.StreamHandler(sys.stdout),
-        logging.FileHandler('lucille.log', mode='a')
+        logging.StreamHandler(sys.stdout)
     ]
 )
 logger = logging.getLogger(__name__)
