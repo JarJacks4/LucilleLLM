@@ -8,7 +8,8 @@ pydantic>=2.5.0
 openai>=1.40.2
 langchain>=0.2.14
 langchain-openai>=0.1.22
-langchain_community>=0.0.20
+langchain-community>=0.0.20
+langchain-core>=0.2.14
 tiktoken>=0.7.0
 
 # Vector database and scientific computing
