@@ -16,6 +16,8 @@ import os
 import uuid
 from collections import defaultdict
 from datetime import datetime
+import logging
+import sys
 
 # OpenAI and LangChain imports
 from openai import OpenAI, APIConnectionError, RateLimitError
@@ -34,6 +36,17 @@ from firebase_service import get_firebase_service
 
 # Load environment variables
 load_dotenv()
+
+# Configure logging for production
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler('lucille.log', mode='a')
+    ]
+)
+logger = logging.getLogger(__name__)
 
 def get_openai_api_key():
     """Get OpenAI API key from environment or Google Secret Manager"""
