@@ -26,7 +26,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.messages import AIMessage, HumanMessage
-from langchain_community.chains.summarize import load_summarize_chain
+# from langchain_community.chains.summarize import load_summarize_chain
 from langchain_core.documents import Document
 import tiktoken
 import httpx
@@ -148,9 +148,8 @@ def count_tokens(text: str) -> int:
 session_histories: Dict[str, BaseChatMessageHistory] = defaultdict(ChatMessageHistory)
 session_summaries: Dict[str, str] = defaultdict(str)
 
-# Initialize summarization chain
+# Initialize summarization LLM
 summary_llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0, request_timeout=120, max_retries=3)
-summarize_chain = load_summarize_chain(llm=summary_llm, chain_type="refine")
 
 # Session validation function
 def validate_session_id(session_id: str) -> str:
@@ -255,8 +254,9 @@ async def chat(request: ChatRequest):
         if count_tokens(full_text) > 8000:
             print("🔁 Summarizing chat history...")
             try:
-                documents = [Document(page_content=full_text)]
-                refined_summary = summarize_chain.run(documents)
+                # Create a simple summary using the LLM directly
+                summary_prompt = f"Please summarize the following conversation history in a concise way, focusing on key topics and decisions:\n\n{full_text}"
+                refined_summary = summary_llm.invoke(summary_prompt).content
                 session_summaries[session_id] = refined_summary
                 
                 # Update summary in Firebase
