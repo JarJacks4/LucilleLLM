@@ -301,11 +301,21 @@ class FirebaseService:
             
             for doc in docs:
                 data = doc.to_dict()
+                
+                # Convert Firestore datetime objects to ISO strings
+                created_at = data.get('created_at')
+                updated_at = data.get('updated_at')
+                
+                if created_at and hasattr(created_at, 'isoformat'):
+                    created_at = created_at.isoformat()
+                if updated_at and hasattr(updated_at, 'isoformat'):
+                    updated_at = updated_at.isoformat()
+                
                 sessions.append({
                     'session_id': data.get('session_id'),
                     'message_count': data.get('message_count', 0),
-                    'created_at': data.get('created_at'),
-                    'updated_at': data.get('updated_at'),
+                    'created_at': created_at,
+                    'updated_at': updated_at,
                     'has_summary': bool(data.get('summary'))
                 })
             
