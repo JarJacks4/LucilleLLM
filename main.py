@@ -3,6 +3,12 @@ LucilleLLM - Self-Care Chatbot API
 
 A FastAPI-based chatbot that provides self-care advice and wellbeing support.
 Features OpenAI integration, FAISS vector search, and Firebase session management.
+
+RAG Enhancement (suyash-rag-enhancement branch):
+- Added RAG (Retrieval-Augmented Generation) to /chat endpoint
+- Retrieves relevant context from FAISS vector store based on user queries
+- Augments LLM prompts with retrieved self-care knowledge base content
+- Improves response accuracy and relevance for self-care topics
 """
 
 from fastapi import FastAPI, Request, HTTPException, status
@@ -18,6 +24,8 @@ from collections import defaultdict
 from datetime import datetime
 import logging
 import sys
+import numpy as np
+import pickle
 
 # OpenAI and LangChain imports
 from openai import OpenAI, APIConnectionError, RateLimitError
@@ -134,6 +142,18 @@ def load_faiss_vectorstore(local_path: str) -> FAISS:
 # Load vector store
 VectorStore = load_faiss_vectorstore(FAISS_INDEX_PATH)
 
+# Load document texts for RAG
+try:
+    with open('texts.pkl', 'rb') as file:
+        DOCS = pickle.load(file)
+    logger.info(f"✅ Loaded {len(DOCS)} documents for RAG")
+except FileNotFoundError:
+    logger.warning("⚠️ texts.pkl not found. RAG retrieval will be disabled.")
+    DOCS = []
+except Exception as e:
+    logger.error(f"❌ Failed to load texts.pkl: {e}")
+    DOCS = []
+
 # Initialize tokenizer for token counting
 try:
     tokenizer = tiktoken.encoding_for_model(OPENAI_MODEL)
@@ -143,6 +163,47 @@ except KeyError:
 def count_tokens(text: str) -> int:
     """Count tokens in text"""
     return len(tokenizer.encode(text))
+
+def retrieve_relevant_context(query: str, k: int = 5, similarity_threshold: float = 1.1) -> str:
+    """
+    Retrieve relevant context from FAISS vector store for RAG.
+    
+    Args:
+        query: User's query
+        k: Number of top results to retrieve
+        similarity_threshold: Maximum distance threshold (lower is more similar)
+    
+    Returns:
+        Combined context string from retrieved documents
+    """
+    if not DOCS or len(DOCS) == 0:
+        logger.warning("No documents available for RAG retrieval")
+        return ""
+    
+    try:
+        # Embed the query using OpenAI embeddings
+        query_embedding = embeddings_model.embed_query(query)
+        query_vector = np.array([query_embedding], dtype=np.float32)
+        
+        # Search in FAISS index
+        distances, indices = VectorStore.index.search(query_vector, k)
+        
+        # Filter by similarity threshold and collect relevant docs
+        retrieved_contexts = []
+        for idx, distance in zip(indices[0], distances[0]):
+            if distance <= similarity_threshold and 0 <= idx < len(DOCS):
+                retrieved_contexts.append(DOCS[idx].page_content)
+        
+        if retrieved_contexts:
+            logger.info(f"🔍 Retrieved {len(retrieved_contexts)} relevant documents for query")
+            return "\n\n".join(retrieved_contexts)
+        else:
+            logger.info(f"No documents found within similarity threshold ({similarity_threshold})")
+            return ""
+            
+    except Exception as e:
+        logger.error(f"❌ Error retrieving context: {e}")
+        return ""
 
 # Session management
 session_histories: Dict[str, BaseChatMessageHistory] = defaultdict(ChatMessageHistory)
@@ -197,7 +258,10 @@ async def chat(request: ChatRequest):
             summary = session_summaries.get(session_id, "")
             existing_session = None
 
-        # Create system prompt with summary if it exists
+        # 🔍 RAG: Retrieve relevant context from vector store
+        retrieved_context = retrieve_relevant_context(prompt, k=5, similarity_threshold=1.1)
+        
+        # Create system prompt with RAG context, summary, and base instructions
         system_prompt = (
             "You are Lucille, a self-care expert and helpful assistant. "
             "Always format your responses in **Markdown** using bold, italic, lists, and line breaks for better readability. "
@@ -205,8 +269,22 @@ async def chat(request: ChatRequest):
             "If someone is suicidal, refer them to suicide helplines immediately."
         )
         
+        # Add retrieved context if available
+        if retrieved_context:
+            system_prompt = (
+                f"You are Lucille, a self-care expert and helpful assistant. "
+                f"Use the following context from the self-care knowledge base to inform your response:\n\n"
+                f"--- KNOWLEDGE BASE CONTEXT ---\n{retrieved_context}\n--- END CONTEXT ---\n\n"
+                f"Always format your responses in **Markdown** using bold, italic, lists, and line breaks for better readability. "
+                f"You are NOT a medical doctor, so always add a disclaimer where needed and refrain from giving medical advice. "
+                f"If someone is suicidal, refer them to suicide helplines immediately. "
+                f"If the context is relevant to the user's question, incorporate it naturally into your response. "
+                f"If the context is not relevant, rely on your general knowledge while staying true to your role."
+            )
+        
+        # Add conversation summary if it exists
         if summary:
-            system_prompt = f"{summary}\n\n{system_prompt}"
+            system_prompt = f"Previous conversation summary:\n{summary}\n\n{system_prompt}"
 
         # Get chat history for context
         chat_history = session_histories.get(session_id, ChatMessageHistory())
