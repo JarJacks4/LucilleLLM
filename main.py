@@ -9,17 +9,24 @@ RAG Enhancement (suyash-rag-enhancement branch):
 - Retrieves relevant context from FAISS vector store based on user queries
 - Augments LLM prompts with retrieved self-care knowledge base content
 - Improves response accuracy and relevance for self-care topics
+
+Streaming Enhancement (suyash-streaming-chat branch):
+- Added /chat/stream endpoint for real-time token streaming
+- Uses Server-Sent Events (SSE) for true streaming responses
+- Provides ChatGPT-like typing experience with RAG integration
 """
 
 from fastapi import FastAPI, Request, HTTPException, status
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, AsyncGenerator
 from dotenv import load_dotenv
 import os
 import uuid
+import json
+import asyncio
 from collections import defaultdict
 from datetime import datetime
 import logging
@@ -365,6 +372,183 @@ async def chat(request: ChatRequest):
 
     except Exception as e:
         print(f"❌ Error in chat endpoint: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Streaming chat endpoint
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """
+    Streaming chat endpoint with RAG enhancement.
+    Returns Server-Sent Events (SSE) for real-time token streaming.
+    
+    Response format:
+    - data: {"delta": "token", "session_id": "...", "type": "content"}
+    - data: {"type": "done", "session_id": "...", "message_count": N}
+    - data: [DONE]
+    """
+    try:
+        # Validate and normalize session ID
+        session_id = validate_session_id(request.session_id)
+        prompt = request.message
+        
+        logger.info(f"🔄 Streaming chat request for session {session_id}")
+        
+        # Initialize Firebase service
+        firebase_service = get_firebase_service()
+
+        # Load existing session from Firebase if it exists
+        try:
+            existing_session = firebase_service.get_chat_session(session_id)
+            if existing_session:
+                summary = existing_session.get('summary', '')
+                session_summaries[session_id] = summary
+                logger.info(f"📱 Loaded existing session {session_id} from Firebase")
+            else:
+                summary = session_summaries.get(session_id, "")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load session from Firebase: {e}")
+            summary = session_summaries.get(session_id, "")
+            existing_session = None
+
+        # 🔍 RAG: Retrieve relevant context from vector store
+        retrieved_context = retrieve_relevant_context(prompt, k=5, similarity_threshold=1.1)
+        
+        # Create system prompt with RAG context, summary, and base instructions
+        system_prompt = (
+            "You are Lucille, a self-care expert and helpful assistant. "
+            "Always format your responses in **Markdown** using bold, italic, lists, and line breaks for better readability. "
+            "You are NOT a medical doctor, so always add a disclaimer where needed and refrain from giving medical advice. "
+            "If someone is suicidal, refer them to suicide helplines immediately."
+        )
+        
+        # Add retrieved context if available
+        if retrieved_context:
+            system_prompt = (
+                f"You are Lucille, a self-care expert and helpful assistant. "
+                f"Use the following context from the self-care knowledge base to inform your response:\n\n"
+                f"--- KNOWLEDGE BASE CONTEXT ---\n{retrieved_context}\n--- END CONTEXT ---\n\n"
+                f"Always format your responses in **Markdown** using bold, italic, lists, and line breaks for better readability. "
+                f"You are NOT a medical doctor, so always add a disclaimer where needed and refrain from giving medical advice. "
+                f"If someone is suicidal, refer them to suicide helplines immediately. "
+                f"If the context is relevant to the user's question, incorporate it naturally into your response. "
+                f"If the context is not relevant, rely on your general knowledge while staying true to your role."
+            )
+        
+        # Add conversation summary if it exists
+        if summary:
+            system_prompt = f"Previous conversation summary:\n{summary}\n\n{system_prompt}"
+
+        # Get chat history for context
+        chat_history = session_histories.get(session_id, ChatMessageHistory())
+        history_messages = []
+        for msg in chat_history.messages[-6:]:  # Last 6 messages for context
+            if isinstance(msg, HumanMessage):
+                history_messages.append({"role": "user", "content": msg.content})
+            elif isinstance(msg, AIMessage):
+                history_messages.append({"role": "assistant", "content": msg.content})
+
+        # Create messages for OpenAI
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(history_messages)
+        messages.append({"role": "user", "content": prompt})
+
+        async def event_generator() -> AsyncGenerator[str, None]:
+            """Generate SSE events with streaming tokens from OpenAI"""
+            full_response = ""
+            
+            try:
+                # Call OpenAI API with streaming enabled
+                stream = openai_client.chat.completions.create(
+                    model=OPENAI_MODEL,
+                    messages=messages,
+                    max_tokens=1000,
+                    temperature=0.7,
+                    stream=True  # Enable streaming
+                )
+                
+                # Stream tokens as they arrive
+                for chunk in stream:
+                    if chunk.choices[0].delta.content:
+                        token = chunk.choices[0].delta.content
+                        full_response += token
+                        
+                        # Send token as SSE event
+                        event_data = json.dumps({
+                            "delta": token,
+                            "session_id": session_id,
+                            "type": "content"
+                        })
+                        yield f"data: {event_data}\n\n"
+                
+                # Update chat history after streaming completes
+                chat_history.add_user_message(prompt)
+                chat_history.add_ai_message(full_response)
+                session_histories[session_id] = chat_history
+                
+                # Store/Update session in Firebase (async-safe)
+                try:
+                    current_messages = chat_history.messages
+                    current_summary = session_summaries.get(session_id, "")
+                    
+                    if existing_session:
+                        firebase_service.update_chat_session(session_id, current_messages, current_summary)
+                    else:
+                        firebase_service.store_chat_session(session_id, current_messages, current_summary)
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to store session in Firebase: {e}")
+                
+                # Summarize if over token limit
+                full_text = f"{prompt} {full_response}"
+                if count_tokens(full_text) > 8000:
+                    logger.info("🔁 Summarizing chat history...")
+                    try:
+                        summary_prompt = f"Please summarize the following conversation history in a concise way, focusing on key topics and decisions:\n\n{full_text}"
+                        refined_summary = summary_llm.invoke(summary_prompt).content
+                        session_summaries[session_id] = refined_summary
+                        firebase_service.update_session_summary(session_id, refined_summary)
+                    except Exception as e:
+                        logger.warning(f"⚠️ Summarization failed: {e}")
+                
+                # Send completion event
+                done_data = json.dumps({
+                    "type": "done",
+                    "session_id": session_id,
+                    "message_count": len(chat_history.messages),
+                    "timestamp": datetime.now().isoformat()
+                })
+                yield f"data: {done_data}\n\n"
+                yield "data: [DONE]\n\n"
+                
+                logger.info(f"✅ Streaming completed for session {session_id}")
+                
+            except APIConnectionError as e:
+                logger.error(f"❌ OpenAI network error: {e}")
+                error_data = json.dumps({"type": "error", "message": f"OpenAI network error: {e}"})
+                yield f"data: {error_data}\n\n"
+                yield "data: [DONE]\n\n"
+            except RateLimitError as e:
+                logger.error(f"❌ OpenAI rate limit: {e}")
+                error_data = json.dumps({"type": "error", "message": "OpenAI rate limit hit"})
+                yield f"data: {error_data}\n\n"
+                yield "data: [DONE]\n\n"
+            except Exception as e:
+                logger.error(f"❌ Streaming error: {e}")
+                error_data = json.dumps({"type": "error", "message": str(e)})
+                yield f"data: {error_data}\n\n"
+                yield "data: [DONE]\n\n"
+        
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Error in streaming chat endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Health check endpoint
