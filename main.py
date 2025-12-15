@@ -509,10 +509,13 @@ async def chat_stream(request: ChatRequest):
                     except Exception as e:
                         logger.warning(f"⚠️ Summarization failed: {e}")
                 
-                # Send completion event
+                # Send completion event with full response (matching /chat format)
                 done_data = json.dumps({
                     "type": "done",
                     "session_id": session_id,
+                    "response": full_response,
+                    "conversation": [prompt, full_response],
+                    "status": "success",
                     "message_count": len(chat_history.messages),
                     "timestamp": datetime.now().isoformat()
                 })
