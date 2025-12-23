@@ -382,10 +382,16 @@ async def chat_stream(request: ChatRequest):
     Streaming chat endpoint with RAG enhancement (FlutterFlow-compatible).
     Returns Server-Sent Events (SSE) for real-time token streaming.
     
-    Response format (FlutterFlow-friendly):
-    - data: {"content": "token"}           <- Each token as it streams
-    - data: {"content": "", "done": true, "session_id": "...", "response": "full response", "message_count": N}
-    - data: [DONE]
+    ALL messages have the SAME format:
+    {
+        "content": "token",      <- The streamed token (empty string when done)
+        "done": false/true,      <- false during streaming, true when complete
+        "session_id": "...",     <- Session ID
+        "response": "...",       <- Empty during streaming, full response when done
+        "message_count": N       <- 0 during streaming, actual count when done
+    }
+    
+    Final signal: data: [DONE]
     """
     try:
         # Validate and normalize session ID
@@ -473,9 +479,14 @@ async def chat_stream(request: ChatRequest):
                         token = chunk.choices[0].delta.content
                         full_response += token
                         
-                        # Send token as SSE event (FlutterFlow-friendly format)
-                        # Using "content" key for compatibility with FlutterFlow streaming
-                        event_data = json.dumps({"content": token})
+                        # Send token as SSE event - CONSISTENT FORMAT for all messages
+                        event_data = json.dumps({
+                            "content": token,
+                            "done": False,
+                            "session_id": session_id,
+                            "response": "",
+                            "message_count": 0
+                        })
                         yield f"data: {event_data}\n\n"
                 
                 # Update chat history after streaming completes
@@ -507,7 +518,7 @@ async def chat_stream(request: ChatRequest):
                     except Exception as e:
                         logger.warning(f"⚠️ Summarization failed: {e}")
                 
-                # Send completion event with full response (FlutterFlow-friendly format)
+                # Send completion event - SAME FORMAT as streaming messages
                 done_data = json.dumps({
                     "content": "",
                     "done": True,
