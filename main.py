@@ -379,12 +379,12 @@ async def chat(request: ChatRequest):
 @app.post("/chat/stream")
 async def chat_stream(request: ChatRequest):
     """
-    Streaming chat endpoint with RAG enhancement.
+    Streaming chat endpoint with RAG enhancement (FlutterFlow-compatible).
     Returns Server-Sent Events (SSE) for real-time token streaming.
     
-    Response format:
-    - data: {"delta": "token", "session_id": "...", "type": "content"}
-    - data: {"type": "done", "session_id": "...", "message_count": N}
+    Response format (FlutterFlow-friendly):
+    - data: {"content": "token"}           <- Each token as it streams
+    - data: {"content": "", "done": true, "session_id": "...", "response": "full response", "message_count": N}
     - data: [DONE]
     """
     try:
@@ -473,12 +473,9 @@ async def chat_stream(request: ChatRequest):
                         token = chunk.choices[0].delta.content
                         full_response += token
                         
-                        # Send token as SSE event
-                        event_data = json.dumps({
-                            "delta": token,
-                            "session_id": session_id,
-                            "type": "content"
-                        })
+                        # Send token as SSE event (FlutterFlow-friendly format)
+                        # Using "content" key for compatibility with FlutterFlow streaming
+                        event_data = json.dumps({"content": token})
                         yield f"data: {event_data}\n\n"
                 
                 # Update chat history after streaming completes
@@ -510,15 +507,13 @@ async def chat_stream(request: ChatRequest):
                     except Exception as e:
                         logger.warning(f"⚠️ Summarization failed: {e}")
                 
-                # Send completion event with full response (matching /chat format)
+                # Send completion event with full response (FlutterFlow-friendly format)
                 done_data = json.dumps({
-                    "type": "done",
+                    "content": "",
+                    "done": True,
                     "session_id": session_id,
                     "response": full_response,
-                    "conversation": [prompt, full_response],
-                    "status": "success",
-                    "message_count": len(chat_history.messages),
-                    "timestamp": datetime.now().isoformat()
+                    "message_count": len(chat_history.messages)
                 })
                 yield f"data: {done_data}\n\n"
                 yield "data: [DONE]\n\n"
