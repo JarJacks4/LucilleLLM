@@ -361,7 +361,7 @@ async def chat(request: ChatRequest):
         except Exception as e:
             print(f"⚠️ Failed to store session in Firebase: {e}")
 
-        return ChatResponse(
+        payload = ChatResponse(
             session_id=session_id,
             response=bot_response,
             conversation=conversation_strings,
@@ -369,6 +369,7 @@ async def chat(request: ChatRequest):
             timestamp=datetime.now().isoformat(),
             message_count=len(chat_history.messages)
         )
+        return JSONResponse(content=payload.model_dump())
 
     except Exception as e:
         print(f"❌ Error in chat endpoint: {e}")
