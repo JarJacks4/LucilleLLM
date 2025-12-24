@@ -3,18 +3,36 @@ LucilleLLM - Self-Care Chatbot API
 
 A FastAPI-based chatbot that provides self-care advice and wellbeing support.
 Features OpenAI integration, FAISS vector search, and Firebase session management.
+
+RAG Enhancement (suyash-rag-enhancement branch):
+- Added RAG (Retrieval-Augmented Generation) to /chat endpoint
+- Retrieves relevant context from FAISS vector store based on user queries
+- Augments LLM prompts with retrieved self-care knowledge base content
+- Improves response accuracy and relevance for self-care topics
+
+Streaming Enhancement (suyash-streaming-chat branch):
+- Added /chat/stream endpoint for real-time token streaming
+- Uses Server-Sent Events (SSE) for true streaming responses
+- Provides ChatGPT-like typing experience with RAG integration
 """
 
 from fastapi import FastAPI, Request, HTTPException, status
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
-from typing import List, Dict
+from typing import List, Dict, Optional, AsyncGenerator
 from dotenv import load_dotenv
 import os
 import uuid
+import json
+import asyncio
 from collections import defaultdict
+from datetime import datetime
+import logging
+import sys
+import numpy as np
+import pickle
 
 # OpenAI and LangChain imports
 from openai import OpenAI, APIConnectionError, RateLimitError
@@ -22,8 +40,8 @@ from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.chat_history import BaseChatMessageHistory
-from langchain.schema import AIMessage, HumanMessage
-from langchain.chains.summarize import load_summarize_chain
+from langchain_core.messages import AIMessage, HumanMessage
+# from langchain_community.chains.summarize import load_summarize_chain
 from langchain_core.documents import Document
 import tiktoken
 import httpx
@@ -33,6 +51,16 @@ from firebase_service import get_firebase_service
 
 # Load environment variables
 load_dotenv()
+
+# Configure logging for production (Cloud Run compatible)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 def get_openai_api_key():
     """Get OpenAI API key from environment or Google Secret Manager"""
@@ -96,12 +124,12 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware
+# CORS middleware - Enhanced for FlutterFlow compatibility
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://app.swaggerhub.com"],
+    allow_origins=["*"],  # Allow all origins for FlutterFlow
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -121,6 +149,18 @@ def load_faiss_vectorstore(local_path: str) -> FAISS:
 # Load vector store
 VectorStore = load_faiss_vectorstore(FAISS_INDEX_PATH)
 
+# Load document texts for RAG
+try:
+    with open('texts.pkl', 'rb') as file:
+        DOCS = pickle.load(file)
+    logger.info(f"✅ Loaded {len(DOCS)} documents for RAG")
+except FileNotFoundError:
+    logger.warning("⚠️ texts.pkl not found. RAG retrieval will be disabled.")
+    DOCS = []
+except Exception as e:
+    logger.error(f"❌ Failed to load texts.pkl: {e}")
+    DOCS = []
+
 # Initialize tokenizer for token counting
 try:
     tokenizer = tiktoken.encoding_for_model(OPENAI_MODEL)
@@ -131,13 +171,60 @@ def count_tokens(text: str) -> int:
     """Count tokens in text"""
     return len(tokenizer.encode(text))
 
+def retrieve_relevant_context(query: str, k: int = 5, similarity_threshold: float = 1.1) -> str:
+    """
+    Retrieve relevant context from FAISS vector store for RAG.
+    
+    Args:
+        query: User's query
+        k: Number of top results to retrieve
+        similarity_threshold: Maximum distance threshold (lower is more similar)
+    
+    Returns:
+        Combined context string from retrieved documents
+    """
+    if not DOCS or len(DOCS) == 0:
+        logger.warning("No documents available for RAG retrieval")
+        return ""
+    
+    try:
+        # Embed the query using OpenAI embeddings
+        query_embedding = embeddings_model.embed_query(query)
+        query_vector = np.array([query_embedding], dtype=np.float32)
+        
+        # Search in FAISS index
+        distances, indices = VectorStore.index.search(query_vector, k)
+        
+        # Filter by similarity threshold and collect relevant docs
+        retrieved_contexts = []
+        for idx, distance in zip(indices[0], distances[0]):
+            if distance <= similarity_threshold and 0 <= idx < len(DOCS):
+                retrieved_contexts.append(DOCS[idx].page_content)
+        
+        if retrieved_contexts:
+            logger.info(f"🔍 Retrieved {len(retrieved_contexts)} relevant documents for query")
+            return "\n\n".join(retrieved_contexts)
+        else:
+            logger.info(f"No documents found within similarity threshold ({similarity_threshold})")
+            return ""
+            
+    except Exception as e:
+        logger.error(f"❌ Error retrieving context: {e}")
+        return ""
+
 # Session management
 session_histories: Dict[str, BaseChatMessageHistory] = defaultdict(ChatMessageHistory)
 session_summaries: Dict[str, str] = defaultdict(str)
 
-# Initialize summarization chain
+# Initialize summarization LLM
 summary_llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0, request_timeout=120, max_retries=3)
-summarize_chain = load_summarize_chain(llm=summary_llm, chain_type="refine")
+
+# Session validation function
+def validate_session_id(session_id: str) -> str:
+    """Validate and normalize session ID"""
+    if not session_id or session_id == "unique_identifier" or session_id == "null" or session_id == "":
+        return str(uuid.uuid4())
+    return session_id
 
 # Request/Response models
 class ChatRequest(BaseModel):
@@ -148,14 +235,18 @@ class ChatResponse(BaseModel):
     session_id: str
     response: str
     conversation: List[str]
+    status: str = "success"
+    timestamp: str = ""
+    message_count: int = 0
 
 # Main chat endpoint
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
     """Main chat endpoint with Firebase session management"""
     try:
+        # Validate and normalize session ID
+        session_id = validate_session_id(request.session_id)
         prompt = request.message
-        session_id = request.session_id
         
         # Initialize Firebase service
         firebase_service = get_firebase_service()
@@ -174,7 +265,10 @@ async def chat(request: ChatRequest):
             summary = session_summaries.get(session_id, "")
             existing_session = None
 
-        # Create system prompt with summary if it exists
+        # 🔍 RAG: Retrieve relevant context from vector store
+        retrieved_context = retrieve_relevant_context(prompt, k=5, similarity_threshold=1.1)
+        
+        # Create system prompt with RAG context, summary, and base instructions
         system_prompt = (
             "You are Lucille, a self-care expert and helpful assistant. "
             "Always format your responses in **Markdown** using bold, italic, lists, and line breaks for better readability. "
@@ -182,8 +276,22 @@ async def chat(request: ChatRequest):
             "If someone is suicidal, refer them to suicide helplines immediately."
         )
         
+        # Add retrieved context if available
+        if retrieved_context:
+            system_prompt = (
+                f"You are Lucille, a self-care expert and helpful assistant. "
+                f"Use the following context from the self-care knowledge base to inform your response:\n\n"
+                f"--- KNOWLEDGE BASE CONTEXT ---\n{retrieved_context}\n--- END CONTEXT ---\n\n"
+                f"Always format your responses in **Markdown** using bold, italic, lists, and line breaks for better readability. "
+                f"You are NOT a medical doctor, so always add a disclaimer where needed and refrain from giving medical advice. "
+                f"If someone is suicidal, refer them to suicide helplines immediately. "
+                f"If the context is relevant to the user's question, incorporate it naturally into your response. "
+                f"If the context is not relevant, rely on your general knowledge while staying true to your role."
+            )
+        
+        # Add conversation summary if it exists
         if summary:
-            system_prompt = f"{summary}\n\n{system_prompt}"
+            system_prompt = f"Previous conversation summary:\n{summary}\n\n{system_prompt}"
 
         # Get chat history for context
         chat_history = session_histories.get(session_id, ChatMessageHistory())
@@ -231,8 +339,9 @@ async def chat(request: ChatRequest):
         if count_tokens(full_text) > 8000:
             print("🔁 Summarizing chat history...")
             try:
-                documents = [Document(page_content=full_text)]
-                refined_summary = summarize_chain.run(documents)
+                # Create a simple summary using the LLM directly
+                summary_prompt = f"Please summarize the following conversation history in a concise way, focusing on key topics and decisions:\n\n{full_text}"
+                refined_summary = summary_llm.invoke(summary_prompt).content
                 session_summaries[session_id] = refined_summary
                 
                 # Update summary in Firebase
@@ -252,14 +361,204 @@ async def chat(request: ChatRequest):
         except Exception as e:
             print(f"⚠️ Failed to store session in Firebase: {e}")
 
-        return ChatResponse(
+        payload = ChatResponse(
             session_id=session_id,
             response=bot_response,
-            conversation=conversation_strings
+            conversation=conversation_strings,
+            status="success",
+            timestamp=datetime.now().isoformat(),
+            message_count=len(chat_history.messages)
         )
+        return JSONResponse(content=payload.model_dump())
 
     except Exception as e:
         print(f"❌ Error in chat endpoint: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Streaming chat endpoint
+@app.post("/chat/stream")
+async def chat_stream(request: ChatRequest):
+    """
+    Streaming chat endpoint with RAG enhancement (FlutterFlow-compatible).
+    Returns Server-Sent Events (SSE) for real-time token streaming.
+    
+    ALL messages have the SAME format:
+    {
+        "content": "token",      <- The streamed token (empty string when done)
+        "done": false/true,      <- false during streaming, true when complete
+        "session_id": "...",     <- Session ID
+        "response": "...",       <- Empty during streaming, full response when done
+        "message_count": N       <- 0 during streaming, actual count when done
+    }
+    
+    Final signal: data: [DONE]
+    """
+    try:
+        # Validate and normalize session ID
+        session_id = validate_session_id(request.session_id)
+        prompt = request.message
+        
+        logger.info(f"🔄 Streaming chat request for session {session_id}")
+        
+        # Initialize Firebase service
+        firebase_service = get_firebase_service()
+
+        # Load existing session from Firebase if it exists
+        try:
+            existing_session = firebase_service.get_chat_session(session_id)
+            if existing_session:
+                summary = existing_session.get('summary', '')
+                session_summaries[session_id] = summary
+                logger.info(f"📱 Loaded existing session {session_id} from Firebase")
+            else:
+                summary = session_summaries.get(session_id, "")
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to load session from Firebase: {e}")
+            summary = session_summaries.get(session_id, "")
+            existing_session = None
+
+        # 🔍 RAG: Retrieve relevant context from vector store
+        retrieved_context = retrieve_relevant_context(prompt, k=5, similarity_threshold=1.1)
+        
+        # Create system prompt with RAG context, summary, and base instructions
+        system_prompt = (
+            "You are Lucille, a self-care expert and helpful assistant. "
+            "Always format your responses in **Markdown** using bold, italic, lists, and line breaks for better readability. "
+            "You are NOT a medical doctor, so always add a disclaimer where needed and refrain from giving medical advice. "
+            "If someone is suicidal, refer them to suicide helplines immediately."
+        )
+        
+        # Add retrieved context if available
+        if retrieved_context:
+            system_prompt = (
+                f"You are Lucille, a self-care expert and helpful assistant. "
+                f"Use the following context from the self-care knowledge base to inform your response:\n\n"
+                f"--- KNOWLEDGE BASE CONTEXT ---\n{retrieved_context}\n--- END CONTEXT ---\n\n"
+                f"Always format your responses in **Markdown** using bold, italic, lists, and line breaks for better readability. "
+                f"You are NOT a medical doctor, so always add a disclaimer where needed and refrain from giving medical advice. "
+                f"If someone is suicidal, refer them to suicide helplines immediately. "
+                f"If the context is relevant to the user's question, incorporate it naturally into your response. "
+                f"If the context is not relevant, rely on your general knowledge while staying true to your role."
+            )
+        
+        # Add conversation summary if it exists
+        if summary:
+            system_prompt = f"Previous conversation summary:\n{summary}\n\n{system_prompt}"
+
+        # Get chat history for context
+        chat_history = session_histories.get(session_id, ChatMessageHistory())
+        history_messages = []
+        for msg in chat_history.messages[-6:]:  # Last 6 messages for context
+            if isinstance(msg, HumanMessage):
+                history_messages.append({"role": "user", "content": msg.content})
+            elif isinstance(msg, AIMessage):
+                history_messages.append({"role": "assistant", "content": msg.content})
+
+        # Create messages for OpenAI
+        messages = [{"role": "system", "content": system_prompt}]
+        messages.extend(history_messages)
+        messages.append({"role": "user", "content": prompt})
+
+        async def event_generator() -> AsyncGenerator[str, None]:
+            """Generate SSE events with streaming tokens from OpenAI"""
+            full_response = ""
+            
+            try:
+                # Call OpenAI API with streaming enabled
+                stream = openai_client.chat.completions.create(
+                    model=OPENAI_MODEL,
+                    messages=messages,
+                    max_tokens=1000,
+                    temperature=0.7,
+                    stream=True  # Enable streaming
+                )
+                
+                # Stream tokens as they arrive
+                for chunk in stream:
+                    if chunk.choices[0].delta.content:
+                        token = chunk.choices[0].delta.content
+                        full_response += token
+                        
+                        # Send token as SSE event - CONSISTENT FORMAT for all messages
+                        event_data = json.dumps({
+                            "content": token,
+                            "done": False,
+                            "session_id": session_id,
+                            "response": "",
+                            "message_count": 0
+                        })
+                        yield f"data: {event_data}\n\n"
+                
+                # Update chat history after streaming completes
+                chat_history.add_user_message(prompt)
+                chat_history.add_ai_message(full_response)
+                session_histories[session_id] = chat_history
+                
+                # Store/Update session in Firebase (async-safe)
+                try:
+                    current_messages = chat_history.messages
+                    current_summary = session_summaries.get(session_id, "")
+                    
+                    if existing_session:
+                        firebase_service.update_chat_session(session_id, current_messages, current_summary)
+                    else:
+                        firebase_service.store_chat_session(session_id, current_messages, current_summary)
+                except Exception as e:
+                    logger.warning(f"⚠️ Failed to store session in Firebase: {e}")
+                
+                # Summarize if over token limit
+                full_text = f"{prompt} {full_response}"
+                if count_tokens(full_text) > 8000:
+                    logger.info("🔁 Summarizing chat history...")
+                    try:
+                        summary_prompt = f"Please summarize the following conversation history in a concise way, focusing on key topics and decisions:\n\n{full_text}"
+                        refined_summary = summary_llm.invoke(summary_prompt).content
+                        session_summaries[session_id] = refined_summary
+                        firebase_service.update_session_summary(session_id, refined_summary)
+                    except Exception as e:
+                        logger.warning(f"⚠️ Summarization failed: {e}")
+                
+                # Send completion event - SAME FORMAT as streaming messages
+                done_data = json.dumps({
+                    "content": "",
+                    "done": True,
+                    "session_id": session_id,
+                    "response": full_response,
+                    "message_count": len(chat_history.messages)
+                })
+                yield f"data: {done_data}\n\n"
+                yield "data: [DONE]\n\n"
+                
+                logger.info(f"✅ Streaming completed for session {session_id}")
+                
+            except APIConnectionError as e:
+                logger.error(f"❌ OpenAI network error: {e}")
+                error_data = json.dumps({"type": "error", "message": f"OpenAI network error: {e}"})
+                yield f"data: {error_data}\n\n"
+                yield "data: [DONE]\n\n"
+            except RateLimitError as e:
+                logger.error(f"❌ OpenAI rate limit: {e}")
+                error_data = json.dumps({"type": "error", "message": "OpenAI rate limit hit"})
+                yield f"data: {error_data}\n\n"
+                yield "data: [DONE]\n\n"
+            except Exception as e:
+                logger.error(f"❌ Streaming error: {e}")
+                error_data = json.dumps({"type": "error", "message": str(e)})
+                yield f"data: {error_data}\n\n"
+                yield "data: [DONE]\n\n"
+        
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no"  # Disable nginx buffering
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Error in streaming chat endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Health check endpoint
@@ -288,9 +587,12 @@ async def health_check():
 async def root():
     """Root endpoint that generates a new session ID"""
     session_id = str(uuid.uuid4())
-    response = JSONResponse(content={"session_id": session_id})
-    response.set_cookie(key="session_id", value=session_id)
-    return response
+    return JSONResponse(content={
+        "session_id": session_id,
+        "status": "success",
+        "message": "New session created",
+        "timestamp": datetime.now().isoformat()
+    })
 
 # Chat interface
 @app.get("/chat-interface", response_class=HTMLResponse)
@@ -358,6 +660,8 @@ async def chat_interface():
 async def get_chat_history(session_id: str):
     """Retrieve chat history for a session"""
     try:
+        # Validate session ID
+        session_id = validate_session_id(session_id)
         firebase_service = get_firebase_service()
         session_data = firebase_service.get_chat_session(session_id)
         
@@ -370,7 +674,10 @@ async def get_chat_history(session_id: str):
         return ChatResponse(
             session_id=session_id,
             response="Chat history retrieved successfully",
-            conversation=conversation_history
+            conversation=conversation_history,
+            status="success",
+            timestamp=datetime.now().isoformat(),
+            message_count=len(conversation_history)
         )
     except Exception as e:
         print(f"❌ Error retrieving chat history: {e}")
@@ -380,6 +687,8 @@ async def get_chat_history(session_id: str):
 async def delete_chat_session(session_id: str):
     """Delete a chat session"""
     try:
+        # Validate session ID
+        session_id = validate_session_id(session_id)
         firebase_service = get_firebase_service()
         success = firebase_service.delete_chat_session(session_id)
         
@@ -390,7 +699,12 @@ async def delete_chat_session(session_id: str):
             if session_id in session_summaries:
                 del session_summaries[session_id]
             
-            return {"message": f"Session {session_id} deleted successfully"}
+            return JSONResponse(content={
+                "session_id": session_id,
+                "status": "success",
+                "message": f"Session {session_id} deleted successfully",
+                "timestamp": datetime.now().isoformat()
+            })
         else:
             raise HTTPException(status_code=404, detail="Session not found")
     except Exception as e:
@@ -403,24 +717,81 @@ async def list_sessions(limit: int = 100):
     try:
         firebase_service = get_firebase_service()
         sessions = firebase_service.list_sessions(limit)
-        return {"sessions": sessions, "count": len(sessions)}
+        return JSONResponse(content={
+            "sessions": sessions, 
+            "count": len(sessions),
+            "status": "success",
+            "timestamp": datetime.now().isoformat()
+        })
     except Exception as e:
         print(f"❌ Error listing sessions: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# Session validation endpoint
+@app.get("/session/{session_id}/validate")
+async def validate_session(session_id: str):
+    """Validate if a session exists"""
+    try:
+        # Validate session ID format
+        session_id = validate_session_id(session_id)
+        firebase_service = get_firebase_service()
+        session_data = firebase_service.get_chat_session(session_id)
+        
+        return JSONResponse(content={
+            "session_id": session_id,
+            "valid": session_data is not None,
+            "status": "success",
+            "timestamp": datetime.now().isoformat()
+        })
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "session_id": session_id,
+                "valid": False,
+                "status": "error",
+                "message": str(e),
+                "timestamp": datetime.now().isoformat()
+            }
+        )
 
 # Exception handlers
 @app.exception_handler(ValidationError)
 async def validation_exception_handler(request: Request, exc: ValidationError):
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content=jsonable_encoder({"detail": exc.errors()}),
+        content={
+            "status": "error",
+            "error_code": 422,
+            "message": "Validation error",
+            "details": jsonable_encoder(exc.errors()),
+            "timestamp": datetime.now().isoformat()
+        }
+    )
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "status": "error",
+            "error_code": exc.status_code,
+            "message": exc.detail,
+            "timestamp": datetime.now().isoformat()
+        }
     )
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"detail": str(exc)},
+        content={
+            "status": "error",
+            "error_code": 500,
+            "message": "Internal server error",
+            "details": str(exc),
+            "timestamp": datetime.now().isoformat()
+        }
     )
 
 # Development server
