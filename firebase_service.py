@@ -4,7 +4,7 @@ from typing import List, Dict, Optional
 from datetime import datetime
 import json
 import os
-from langchain.schema import BaseMessage, HumanMessage, AIMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
 
 class FirebaseService:
     def __init__(self):
@@ -21,7 +21,7 @@ class FirebaseService:
                     print(f"⚠️ Default credentials failed: {e}")
                     
                     # Fallback to service account file
-                    cred_path = "escape-ujuzxr-firebase-adminsdk-he895-1a039bd95a.json"
+                    cred_path = "escape-self-care-ai-firebase-key.json"
                     if os.path.exists(cred_path):
                         try:
                             print(f"🔑 Trying service account file: {cred_path}")
@@ -301,11 +301,21 @@ class FirebaseService:
             
             for doc in docs:
                 data = doc.to_dict()
+                
+                # Convert Firestore datetime objects to ISO strings
+                created_at = data.get('created_at')
+                updated_at = data.get('updated_at')
+                
+                if created_at and hasattr(created_at, 'isoformat'):
+                    created_at = created_at.isoformat()
+                if updated_at and hasattr(updated_at, 'isoformat'):
+                    updated_at = updated_at.isoformat()
+                
                 sessions.append({
                     'session_id': data.get('session_id'),
                     'message_count': data.get('message_count', 0),
-                    'created_at': data.get('created_at'),
-                    'updated_at': data.get('updated_at'),
+                    'created_at': created_at,
+                    'updated_at': updated_at,
                     'has_summary': bool(data.get('summary'))
                 })
             
