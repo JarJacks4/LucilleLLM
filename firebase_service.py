@@ -3,8 +3,25 @@ from firebase_admin import credentials, firestore
 from typing import List, Dict, Optional
 from datetime import datetime
 import json
+import logging
 import os
+import sys
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
+
+logger = logging.getLogger(__name__)
+
+# Fix emoji encoding crash on Windows (cp1252 can't encode emoji)
+# Reconfigure stdout/stderr to replace unencodable characters
+if sys.stdout and hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(errors="replace")
+    except Exception:
+        pass
+if sys.stderr and hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(errors="replace")
+    except Exception:
+        pass
 
 class FirebaseService:
     def __init__(self):

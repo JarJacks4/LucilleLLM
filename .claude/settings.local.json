@@ -102,7 +102,13 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\(''models.py'',''r'',encoding=''utf-8''\\).read\\(\\)\\); print\\(''models.py: OK''\\)\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\(''config.py'',''r'',encoding=''utf-8''\\).read\\(\\)\\); print\\(''config.py: OK''\\)\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\(''assessment_service.py'',''r'',encoding=''utf-8''\\).read\\(\\)\\); print\\(''assessment_service.py: OK''\\)\")",
-      "Bash(python -c \"import ast; ast.parse\\(open\\(''auth_middleware.py'',''r'',encoding=''utf-8''\\).read\\(\\)\\); print\\(''auth_middleware.py: OK''\\)\")"
+      "Bash(python -c \"import ast; ast.parse\\(open\\(''auth_middleware.py'',''r'',encoding=''utf-8''\\).read\\(\\)\\); print\\(''auth_middleware.py: OK''\\)\")",
+      "Bash(python -m pytest tests/test_selfcare_score_service.py -v)",
+      "Bash(python -m pytest tests/ -v)",
+      "Bash(find C:/Users/91734/Desktop/LucilleLLM-main -type f \\\\\\(-name *.py -o -name *.ts -o -name *.tsx -o -name *.js \\\\\\) ! -path */__pycache__/* ! -path */node_modules/* ! -path */.git/*)",
+      "Bash(set PYTHONUTF8=1)",
+      "Bash(python -m pytest tests/ -v --tb=short)",
+      "Bash(python -m pytest tests/test_selfcare_score_service.py -v --tb=short)"
     ]
   }
 }

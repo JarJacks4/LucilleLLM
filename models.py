@@ -402,6 +402,8 @@ class ProgressSummary(BaseModel):
     task_completion_rate: float = 0.0
     total_practice_minutes: int = Field(default=0,
         description="Estimated total minutes from completed exercise durations")
+    sessions_this_week: int = Field(default=0,
+        description="Number of exercises completed in the current week (last 7 days)")
     computed_at: str = Field(default_factory=lambda: datetime.now().isoformat())
     # Phase 7: Feedback stats
     total_feedback_given: int = Field(default=0,
@@ -1350,6 +1352,42 @@ class WellnessScore(BaseModel):
     concern_flags: List[str] = Field(default_factory=list)
     last_assessment_dates: dict = Field(default_factory=dict, description="Maps assessment type to last completion ISO date")
     disclaimer: str = Field(default=ASSESSMENT_DISCLAIMER)
+    computed_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
+# ── Self-Care Score Models (Phase 22) ─────────────────────
+
+SELFCARE_DISCLAIMER = (
+    "This score reflects your engagement with self-care activities, "
+    "not your clinical mental health status. It is not a medical assessment."
+)
+
+
+class SelfCareScoreCategory(BaseModel):
+    """One dimension of the Self-Care Score."""
+    name: str = Field(description="Category name, e.g. 'Mood Stability'")
+    score: float = Field(default=0.0, ge=0.0, le=100.0, description="Raw score for this category (0-100)")
+    weight: float = Field(default=0.0, ge=0.0, le=1.0, description="Weight applied (0.0-1.0)")
+    weighted_score: float = Field(default=0.0, ge=0.0, description="score * weight contribution to total")
+    detail: str = Field(default="", description="Human-readable explanation")
+
+
+class SelfCareScore(BaseModel):
+    """
+    Composite engagement and self-care score (0-100).
+
+    NOT a clinical assessment. Measures how consistently the user engages
+    with self-care activities (mood logging, exercises, tasks, streaks).
+    """
+    user_id: str
+    overall_score: float = Field(default=0.0, ge=0.0, le=100.0)
+    categories: List[SelfCareScoreCategory] = Field(default_factory=list)
+    trend: str = Field(default="stable", description="'improving', 'stable', or 'declining'")
+    burnout_flag: bool = Field(default=False)
+    burnout_detail: str = Field(default="")
+    insight_text: str = Field(default="", description="Lucille's personalized insight")
+    data_sufficiency: str = Field(default="insufficient", description="'insufficient', 'partial', or 'full'")
+    disclaimer: str = Field(default=SELFCARE_DISCLAIMER)
     computed_at: str = Field(default_factory=lambda: datetime.now().isoformat())
 
 

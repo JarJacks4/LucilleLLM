@@ -78,6 +78,10 @@ class AppConfig:
     GCS_AUDIO_PREFIX: str = "soundscapes/"      # path prefix in bucket
     GCS_SIGNED_URL_EXPIRY_MINUTES: int = 60     # signed URL TTL (1 hour)
 
+    # Local Audio Fallback (when GCS is not configured)
+    LOCAL_AUDIO_FALLBACK: bool = False           # enable local file serving for dev
+    LOCAL_AUDIO_DIR: str = ""                    # e.g. "./audio_output"
+
     # Voice I/O (TTS / STT)
     TTS_PROVIDER: str = "edge-tts"              # "edge-tts", "openai", "google"
     STT_PROVIDER: str = "speech_recognition"    # "speech_recognition", "openai", "google"
@@ -126,6 +130,13 @@ class AppConfig:
     ASSESSMENT_WHO5_CONCERN_THRESHOLD: int = 50        # WHO-5 scaled score below this = concern
     ASSESSMENT_PHQ9_CONCERN_THRESHOLD: int = 10        # PHQ-9 score at/above this = concern
     ASSESSMENT_GAD7_CONCERN_THRESHOLD: int = 10        # GAD-7 score at/above this = concern
+
+    # Self-Care Score (Phase 22)
+    SELFCARE_SCORE_ENABLED: bool = True                # master toggle
+    SELFCARE_MOOD_WINDOW_DAYS: int = 14                # days of mood history to consider
+    SELFCARE_STREAK_CAP_DAYS: int = 14                 # max streak days for full score
+    SELFCARE_BURNOUT_ENGAGEMENT_THRESHOLD: float = 80.0   # engagement above this + low effectiveness = burnout
+    SELFCARE_BURNOUT_EFFECTIVENESS_THRESHOLD: float = 30.0  # effectiveness below this + high engagement = burnout
 
 
 def _load_config() -> AppConfig:
@@ -199,6 +210,8 @@ def _load_config() -> AppConfig:
         GCS_AUDIO_BUCKET=os.getenv("GCS_AUDIO_BUCKET", ""),
         GCS_AUDIO_PREFIX=os.getenv("GCS_AUDIO_PREFIX", "soundscapes/"),
         GCS_SIGNED_URL_EXPIRY_MINUTES=_env_int("GCS_SIGNED_URL_EXPIRY_MINUTES", 60),
+        LOCAL_AUDIO_FALLBACK=_env_bool("LOCAL_AUDIO_FALLBACK", False),
+        LOCAL_AUDIO_DIR=os.getenv("LOCAL_AUDIO_DIR", ""),
         # Voice I/O
         TTS_PROVIDER=os.getenv("TTS_PROVIDER", "edge-tts"),
         STT_PROVIDER=os.getenv("STT_PROVIDER", "speech_recognition"),
@@ -241,6 +254,12 @@ def _load_config() -> AppConfig:
         ASSESSMENT_WHO5_CONCERN_THRESHOLD=_env_int("ASSESSMENT_WHO5_CONCERN_THRESHOLD", 50),
         ASSESSMENT_PHQ9_CONCERN_THRESHOLD=_env_int("ASSESSMENT_PHQ9_CONCERN_THRESHOLD", 10),
         ASSESSMENT_GAD7_CONCERN_THRESHOLD=_env_int("ASSESSMENT_GAD7_CONCERN_THRESHOLD", 10),
+        # Self-Care Score (Phase 22)
+        SELFCARE_SCORE_ENABLED=_env_bool("SELFCARE_SCORE_ENABLED", True),
+        SELFCARE_MOOD_WINDOW_DAYS=_env_int("SELFCARE_MOOD_WINDOW_DAYS", 14),
+        SELFCARE_STREAK_CAP_DAYS=_env_int("SELFCARE_STREAK_CAP_DAYS", 14),
+        SELFCARE_BURNOUT_ENGAGEMENT_THRESHOLD=_env_float("SELFCARE_BURNOUT_ENGAGEMENT_THRESHOLD", 80.0),
+        SELFCARE_BURNOUT_EFFECTIVENESS_THRESHOLD=_env_float("SELFCARE_BURNOUT_EFFECTIVENESS_THRESHOLD", 30.0),
     )
 
 

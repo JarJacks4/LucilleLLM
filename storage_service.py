@@ -11,6 +11,7 @@ Follows the singleton pattern from other services.
 """
 
 import logging
+import os
 from datetime import timedelta
 from typing import List, Optional
 
@@ -33,6 +34,8 @@ class StorageService:
         self._bucket_name = config.GCS_AUDIO_BUCKET
         self._prefix = config.GCS_AUDIO_PREFIX
         self._expiry_minutes = config.GCS_SIGNED_URL_EXPIRY_MINUTES
+        self._local_audio_fallback = config.LOCAL_AUDIO_FALLBACK
+        self._local_audio_dir = config.LOCAL_AUDIO_DIR
         self._client = None
         self._bucket = None
 
@@ -171,6 +174,33 @@ class StorageService:
         except Exception as e:
             logger.warning(f"Failed to list audio files: {e}")
             return []
+
+    # ── Local Audio Fallback ───────────────────────────────────
+
+    @property
+    def has_local_fallback(self) -> bool:
+        """Check if local audio fallback is enabled and directory exists."""
+        return (
+            self._local_audio_fallback
+            and bool(self._local_audio_dir)
+            and os.path.isdir(self._local_audio_dir)
+        )
+
+    def get_local_audio_path(self, soundscape_id: str) -> Optional[str]:
+        """
+        Get the local file path for a soundscape audio file.
+
+        Returns:
+            Absolute path to the file if it exists, None otherwise.
+        """
+        if not self.has_local_fallback:
+            return None
+        # Check for .mp3 first, then .wav
+        for ext in (".mp3", ".wav"):
+            path = os.path.join(self._local_audio_dir, f"{soundscape_id}{ext}")
+            if os.path.isfile(path):
+                return os.path.abspath(path)
+        return None
 
     def delete_file(self, blob_path: str) -> bool:
         """

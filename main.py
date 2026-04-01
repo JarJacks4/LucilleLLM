@@ -17,7 +17,7 @@ Streaming Enhancement (suyash-streaming-chat branch):
 """
 
 from fastapi import Depends, FastAPI, Request, HTTPException, status
-from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse, FileResponse
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
@@ -3055,8 +3055,10 @@ async def query_audit_log(
 @app.get("/soundscapes/{soundscape_id}/audio")
 async def get_soundscape_audio_url(soundscape_id: str):
     """
-    Get a fresh signed GCS URL for a soundscape audio file.
-    Returns the URL so the frontend can stream audio directly.
+    Get audio for a soundscape.
+
+    Tries GCS signed URL first. Falls back to local file serving
+    when LOCAL_AUDIO_FALLBACK is enabled (for development/demo).
     """
     ss_svc = get_soundscape_service()
     ss = ss_svc.get_soundscape(soundscape_id)
@@ -3067,26 +3069,41 @@ async def get_soundscape_audio_url(soundscape_id: str):
         )
 
     storage_svc = get_storage_service()
-    if not storage_svc.is_configured:
+
+    # Try GCS first (production path)
+    if storage_svc.is_configured:
+        audio_url = storage_svc.get_audio_url(soundscape_id)
+        if audio_url:
+            return JSONResponse(content={
+                "soundscape_id": soundscape_id,
+                "title": ss.title,
+                "audio_url": audio_url,
+                "source": "gcs",
+                "expires_in_minutes": get_config().GCS_SIGNED_URL_EXPIRY_MINUTES,
+                "timestamp": datetime.now().isoformat(),
+            })
+
+    # Fall back to local audio files (development/demo)
+    local_path = storage_svc.get_local_audio_path(soundscape_id)
+    if local_path:
+        media_type = "audio/mpeg" if local_path.endswith(".mp3") else "audio/wav"
+        return FileResponse(
+            path=local_path,
+            media_type=media_type,
+            filename=f"{soundscape_id}{'.mp3' if local_path.endswith('.mp3') else '.wav'}",
+        )
+
+    # Neither GCS nor local available
+    if not storage_svc.is_configured and not storage_svc.has_local_fallback:
         raise HTTPException(
             status_code=503,
-            detail="Audio storage is not configured.",
+            detail="Audio storage is not configured. Set GCS_AUDIO_BUCKET for production "
+                   "or LOCAL_AUDIO_FALLBACK=true with LOCAL_AUDIO_DIR for development.",
         )
-
-    audio_url = storage_svc.get_audio_url(soundscape_id)
-    if not audio_url:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No audio file found for soundscape '{soundscape_id}'.",
-        )
-
-    return JSONResponse(content={
-        "soundscape_id": soundscape_id,
-        "title": ss.title,
-        "audio_url": audio_url,
-        "expires_in_minutes": get_config().GCS_SIGNED_URL_EXPIRY_MINUTES,
-        "timestamp": datetime.now().isoformat(),
-    })
+    raise HTTPException(
+        status_code=404,
+        detail=f"No audio file found for soundscape '{soundscape_id}'.",
+    )
 
 
 @app.get("/admin/audio-status", dependencies=[Depends(require_admin)])
@@ -4441,6 +4458,43 @@ async def get_wellness_score(user_id: str):
         })
     except Exception as e:
         logger.error(f"Error getting wellness score: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Self-Care Score (Phase 22) ────────────────────────────
+
+
+@app.get("/users/{user_id}/selfcare-score", dependencies=[Depends(require_same_user())])
+async def get_selfcare_score(user_id: str):
+    """
+    Get composite self-care engagement score (0-100).
+
+    Combines mood stability, exercise engagement, exercise effectiveness,
+    task completion, and consistency into a single score with category
+    breakdowns and personalized insights.
+
+    This is NOT a clinical assessment — it measures engagement with
+    self-care activities, not clinical mental health status.
+    """
+    config = get_config()
+    if not config.SELFCARE_SCORE_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail="Self-Care Score is currently disabled.",
+        )
+
+    try:
+        from selfcare_score_service import get_selfcare_score_service
+        svc = get_selfcare_score_service()
+        result = svc.compute_score(user_id)
+
+        return JSONResponse(content={
+            **result.model_dump(),
+            "status": "success",
+            "timestamp": datetime.now().isoformat(),
+        })
+    except Exception as e:
+        logger.error(f"Error computing self-care score for {user_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

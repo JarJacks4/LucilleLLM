@@ -81,6 +81,12 @@ class ProgressService:
                 elif status == "abandoned":
                     summary.total_exercises_abandoned += 1
 
+            # Sessions this week (last 7 days)
+            week_ago = (datetime.now() - timedelta(days=7)).date()
+            summary.sessions_this_week = sum(
+                1 for d in completed_dates if d >= week_ago
+            )
+
             # Completion rate
             if summary.total_exercises_started > 0:
                 summary.completion_rate = round(
