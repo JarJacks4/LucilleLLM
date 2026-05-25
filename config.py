@@ -25,6 +25,7 @@ class AppConfig:
 
     # Model configuration
     OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_VISION_MODEL: str = "gpt-4o-mini"   # vision-capable model for image mood analysis
     EMBEDDING_MODEL: str = "text-embedding-3-small"
     FAISS_INDEX_PATH: str = "./faiss_vecdb"
 
@@ -88,6 +89,7 @@ class AppConfig:
     TTS_VOICE: str = "en-US-AriaNeural"         # default edge-tts voice
     TTS_RATE: str = "+0%"                       # speech rate adjustment
     MAX_AUDIO_SIZE_MB: int = 10                 # max audio upload size in MB
+    MAX_IMAGE_SIZE_MB: int = 10                 # max image upload size in MB (mood analysis)
 
     # Wearable Integration
     WEARABLE_SYNC_ENABLED: bool = True
@@ -171,6 +173,7 @@ def _load_config() -> AppConfig:
     return AppConfig(
         ENVIRONMENT=os.getenv("ENVIRONMENT", "development"),
         OPENAI_MODEL=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+        OPENAI_VISION_MODEL=os.getenv("OPENAI_VISION_MODEL", "gpt-4o-mini"),
         EMBEDDING_MODEL=os.getenv("EMBEDDING_MODEL", "text-embedding-3-small"),
         FAISS_INDEX_PATH=os.getenv("FAISS_INDEX_PATH", "./faiss_vecdb"),
         RATE_LIMIT_CHAT=_env_int("RATE_LIMIT_CHAT", 10),
@@ -218,6 +221,7 @@ def _load_config() -> AppConfig:
         TTS_VOICE=os.getenv("TTS_VOICE", "en-US-AriaNeural"),
         TTS_RATE=os.getenv("TTS_RATE", "+0%"),
         MAX_AUDIO_SIZE_MB=_env_int("MAX_AUDIO_SIZE_MB", 10),
+        MAX_IMAGE_SIZE_MB=_env_int("MAX_IMAGE_SIZE_MB", 10),
         # Wearable Integration
         WEARABLE_SYNC_ENABLED=_env_bool("WEARABLE_SYNC_ENABLED", True),
         WEARABLE_HEALTH_CONTEXT_DAYS=_env_int("WEARABLE_HEALTH_CONTEXT_DAYS", 7),

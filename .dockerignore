@@ -1,0 +1,36 @@
+# Secrets — NEVER include in Docker image
+.env
+.env.*
+*.pem
+*.key
+*firebase*.json
+*credentials*.json
+*service-account*.json
+
+# Development
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.git/
+.gitignore
+.claude/
+
+# IDE
+.vscode/
+.idea/
+
+# Docs and non-runtime files
+*.md
+PHASE_4_TODO.md
+LICENSE
+
+# Tests (not needed in production image)
+tests/
+
+# Audio output from local dev
+audio_output/
+
+# Node modules (if any from Firebase CLI)
+node_modules/

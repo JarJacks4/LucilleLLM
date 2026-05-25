@@ -243,7 +243,7 @@ See [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) for detailed architecture and file-
 | Method | For | How |
 |--------|-----|-----|
 | Firebase JWT | Mobile/web clients | `Authorization: Bearer <firebase_id_token>` |
-| API Key | Service-to-service | `Authorization: Bearer <LUCILLE_API_KEY>` |
+| Internal Service Key | Service-to-service | `Authorization: Bearer <INTERNAL_SERVICE_KEY>` |
 | None | Public endpoints | `/health`, `/`, `/assessments/instruments` |
 
 Admin endpoints (`/admin/*`, `/finetuning/*`) require admin role.

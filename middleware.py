@@ -8,13 +8,15 @@ Rate limiting protects /chat endpoints from abuse.
 Metrics middleware tracks per-endpoint latency and request counts.
 """
 
+import contextvars
 import logging
+import os
 import re
 import threading
 import time
 import uuid
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Protocol
 
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
@@ -25,6 +27,31 @@ from audit_service import get_audit_service
 from models import AuditAction
 
 logger = logging.getLogger(__name__)
+
+
+# ── Request correlation ID context ────────────────────────
+# A ContextVar carries the current request's ID through async call stacks so
+# any log line, anywhere in the codebase, can be tagged with it without
+# threading the value through every function call. The StructuredFormatter
+# in main.py reads this and includes it in the JSON log output.
+_request_id_ctx: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "request_id", default=""
+)
+
+
+def get_request_id() -> str:
+    """Return the current request's correlation ID, or empty string if outside a request."""
+    return _request_id_ctx.get()
+
+
+def set_request_id(request_id: str) -> contextvars.Token:
+    """Set the correlation ID for the current async context. Returns a token for reset."""
+    return _request_id_ctx.set(request_id)
+
+
+def reset_request_id(token: contextvars.Token) -> None:
+    """Reset the correlation ID context to its previous value."""
+    _request_id_ctx.reset(token)
 
 # Regex to normalize UUID segments in paths for metrics grouping
 _UUID_PATTERN = re.compile(
@@ -72,12 +99,32 @@ class TokenBucket:
             return False
 
 
-# ── Rate Limiter ──────────────────────────────────────────
+# ── Rate Limiter Backends ─────────────────────────────────
+#
+# Two backends with the same .check(client_id) -> bool interface:
+#   - InMemoryRateLimiter: token buckets in process memory. Simple, zero deps,
+#     but each Cloud Run instance has its own buckets, so a user hitting 3
+#     instances effectively gets 3x the limit. Fine for development and small
+#     production deployments.
+#   - RedisRateLimiter: sliding window counters in Redis. Shared across all
+#     instances — true global rate limiting. Activates automatically if the
+#     REDIS_URL env var is set AND the redis package is installed.
+#
+# To enable Redis: `pip install redis` and set REDIS_URL=redis://host:6379/0
 
 
-class RateLimiter:
+class RateLimiterBackend(Protocol):
+    """Interface every rate limiter implementation must satisfy."""
+    def check(self, client_id: str) -> bool: ...
+
+
+class InMemoryRateLimiter:
     """
-    Manages global and per-client token buckets.
+    Manages global and per-client token buckets in process memory.
+
+    Limitation: state is per-process, so does NOT enforce limits correctly
+    across multiple Cloud Run instances. Use RedisRateLimiter for production
+    deployments with >1 instance.
     """
 
     def __init__(
@@ -97,11 +144,8 @@ class RateLimiter:
 
     def check(self, client_id: str) -> bool:
         """Check if the request is allowed. Returns True if allowed."""
-        # Global check first
         if not self._global_bucket.consume():
             return False
-
-        # Per-client check
         with self._lock:
             if client_id not in self._client_buckets:
                 self._client_buckets[client_id] = TokenBucket(
@@ -110,15 +154,100 @@ class RateLimiter:
                 )
         return self._client_buckets[client_id].consume()
 
-    def _get_client_id(self, request: Request) -> str:
-        """Extract client identifier from request."""
-        # Cloud Run sets X-Forwarded-For
-        forwarded = request.headers.get("x-forwarded-for")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-        if request.client:
-            return request.client.host
-        return "unknown"
+
+class RedisRateLimiter:
+    """
+    Distributed sliding-window rate limiter backed by Redis.
+
+    Uses INCR + EXPIRE on a per-(client_id, window) key. Cheap (one round-trip
+    per request) and shared across all backend instances, so users can't bypass
+    limits by hitting different Cloud Run replicas.
+
+    Falls back gracefully if Redis becomes unreachable: returns True (allow)
+    rather than blocking all traffic on a Redis outage. The fallback is logged
+    so you'll see it in your monitoring.
+    """
+
+    def __init__(
+        self,
+        redis_url: str,
+        chat_rate: int = 10,
+        global_rate: int = 100,
+        window_seconds: int = 60,
+    ):
+        import redis  # local import — only required when this backend is used
+        self._redis = redis.from_url(redis_url, socket_timeout=2, decode_responses=True)
+        self._chat_rate = chat_rate
+        self._global_rate = global_rate
+        self._window_seconds = window_seconds
+        # Verify connectivity at startup so a misconfigured URL fails loudly
+        self._redis.ping()
+
+    def check(self, client_id: str) -> bool:
+        """Check both global and per-client limits via Redis counters."""
+        try:
+            now_window = int(time.time() // self._window_seconds)
+            global_key = f"rl:global:{now_window}"
+            client_key = f"rl:client:{client_id}:{now_window}"
+
+            pipe = self._redis.pipeline()
+            pipe.incr(global_key)
+            pipe.expire(global_key, self._window_seconds * 2)
+            pipe.incr(client_key)
+            pipe.expire(client_key, self._window_seconds * 2)
+            global_count, _, client_count, _ = pipe.execute()
+
+            if int(global_count) > self._global_rate:
+                return False
+            if int(client_count) > self._chat_rate:
+                return False
+            return True
+        except Exception as e:
+            # Fail-open on Redis errors so we don't block all traffic during
+            # an outage. Logged so you can alert on it.
+            logger.error(f"Redis rate limiter failed, allowing request: {e}")
+            return True
+
+
+def _build_rate_limiter() -> RateLimiterBackend:
+    """Construct the appropriate backend based on REDIS_URL env var."""
+    config = get_config()
+    redis_url = os.getenv("REDIS_URL", "").strip()
+    if redis_url:
+        try:
+            limiter = RedisRateLimiter(
+                redis_url=redis_url,
+                chat_rate=config.RATE_LIMIT_CHAT,
+                global_rate=config.RATE_LIMIT_GLOBAL,
+                window_seconds=config.RATE_LIMIT_WINDOW_SECONDS,
+            )
+            logger.info(f"Rate limiter: Redis backend at {redis_url.split('@')[-1]}")
+            return limiter
+        except Exception as e:
+            logger.error(
+                f"Redis rate limiter init failed ({e}); falling back to in-memory. "
+                f"Multi-instance deployments will NOT enforce limits correctly."
+            )
+    logger.info("Rate limiter: in-memory backend (single-instance only)")
+    return InMemoryRateLimiter(
+        chat_rate=config.RATE_LIMIT_CHAT,
+        global_rate=config.RATE_LIMIT_GLOBAL,
+        window_seconds=config.RATE_LIMIT_WINDOW_SECONDS,
+    )
+
+
+def _get_client_id_from_request(request: Request) -> str:
+    """Extract client identifier from request (Cloud Run X-Forwarded-For aware)."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client:
+        return request.client.host
+    return "unknown"
+
+
+# Backwards-compat alias for existing imports / external code
+RateLimiter = InMemoryRateLimiter
 
 
 # ── Rate Limit Middleware ─────────────────────────────────
@@ -135,7 +264,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         if path in _RATE_LIMITED_PATHS:
             limiter = get_rate_limiter()
-            client_id = limiter._get_client_id(request)
+            client_id = _get_client_id_from_request(request)
 
             if not limiter.check(client_id):
                 logger.warning(f"Rate limit exceeded for client {client_id} on {path}")
@@ -239,10 +368,18 @@ class MetricsMiddleware(BaseHTTPMiddleware):
     """
 
     async def dispatch(self, request: Request, call_next):
-        request_id = str(uuid.uuid4())
+        # Honor an upstream X-Request-ID (from load balancer / API gateway) if
+        # present, otherwise generate a fresh one. Setting it on the contextvar
+        # lets every log line in this request automatically include the ID.
+        incoming_id = request.headers.get("x-request-id", "").strip()
+        request_id = incoming_id or str(uuid.uuid4())
+        token = set_request_id(request_id)
         start = time.time()
 
-        response = await call_next(request)
+        try:
+            response = await call_next(request)
+        finally:
+            reset_request_id(token)
 
         elapsed_ms = (time.time() - start) * 1000
         response.headers["X-Request-ID"] = request_id
@@ -331,20 +468,15 @@ class PrivacyMiddleware(BaseHTTPMiddleware):
 
 # ── Singletons ────────────────────────────────────────────
 
-_rate_limiter: Optional[RateLimiter] = None
+_rate_limiter: Optional[RateLimiterBackend] = None
 _metrics_collector: Optional[MetricsCollector] = None
 
 
-def get_rate_limiter() -> RateLimiter:
-    """Get or create RateLimiter singleton."""
+def get_rate_limiter() -> RateLimiterBackend:
+    """Get or create the rate limiter singleton (Redis if configured, else in-memory)."""
     global _rate_limiter
     if _rate_limiter is None:
-        config = get_config()
-        _rate_limiter = RateLimiter(
-            chat_rate=config.RATE_LIMIT_CHAT,
-            global_rate=config.RATE_LIMIT_GLOBAL,
-            window_seconds=config.RATE_LIMIT_WINDOW_SECONDS,
-        )
+        _rate_limiter = _build_rate_limiter()
     return _rate_limiter
 
 
