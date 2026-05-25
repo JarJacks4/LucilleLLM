@@ -1,0 +1,2 @@
+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
+FIREBASE_CREDENTIAL_PATH=escape-self-care-ai-firebase-adminsdk-fbsvc-500786fc91.json

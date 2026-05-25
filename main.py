@@ -16,7 +16,8 @@ Streaming Enhancement (suyash-streaming-chat branch):
 - Provides ChatGPT-like typing experience with RAG integration
 """
 
-from fastapi import Depends, FastAPI, Request, HTTPException, status
+from fastapi.exceptions import RequestValidationError
+from fastapi import Depends, FastAPI, Request, HTTPException, status, File, UploadFile
 from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse, FileResponse
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,7 +36,7 @@ import numpy as np
 import pickle
 
 # OpenAI and LangChain imports
-from openai import OpenAI, APIConnectionError, RateLimitError
+from openai import OpenAI, AsyncOpenAI, APIConnectionError, RateLimitError
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS
 from langchain_community.chat_message_histories import ChatMessageHistory
@@ -72,8 +73,8 @@ from escalation_service import get_escalation_service
 from assessment_service import get_assessment_service
 from config import get_config
 from cache import get_cache, user_profile_key, effectiveness_key
-from middleware import RateLimitMiddleware, MetricsMiddleware, PrivacyMiddleware, get_metrics_collector
-from auth_middleware import get_current_user, require_admin, require_same_user
+from middleware import RateLimitMiddleware, MetricsMiddleware, PrivacyMiddleware, get_metrics_collector, get_request_id
+from auth_middleware import get_current_user, require_admin, require_same_user, _is_admin
 from utils.sanitize import sanitize_input
 from models import (
     ChatRequest, ChatResponse,
@@ -116,8 +117,16 @@ from models import (
 load_dotenv()
 
 # Configure structured logging for production (Cloud Run / Cloud Logging compatible)
+
+
 class StructuredFormatter(logging.Formatter):
-    """JSON log formatter compatible with Google Cloud Logging."""
+    """JSON log formatter compatible with Google Cloud Logging.
+
+    Automatically includes the per-request correlation ID (X-Request-ID) on
+    every log line, so you can grep all logs from a single request even when
+    they come from different modules and concurrent requests are interleaved.
+    """
+
     def format(self, record):
         log_entry = {
             "severity": record.levelname,
@@ -125,21 +134,28 @@ class StructuredFormatter(logging.Formatter):
             "module": record.module,
             "timestamp": datetime.utcnow().isoformat() + "Z",
         }
+        # Include request correlation ID when inside a request context
+        rid = get_request_id()
+        if rid:
+            log_entry["request_id"] = rid
         if record.exc_info:
             log_entry["exception"] = self.formatException(record.exc_info)
         return json.dumps(log_entry)
+
 
 _log_config = get_config()
 _log_handler = logging.StreamHandler(sys.stdout)
 if _log_config.LOG_FORMAT == "json":
     _log_handler.setFormatter(StructuredFormatter())
 else:
-    _log_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+    _log_handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
 logging.basicConfig(
     level=getattr(logging, _log_config.LOG_LEVEL, logging.INFO),
     handlers=[_log_handler],
 )
 logger = logging.getLogger(__name__)
+
 
 def get_openai_api_key():
     """Get OpenAI API key from environment or Google Secret Manager"""
@@ -147,15 +163,15 @@ def get_openai_api_key():
     api_key = os.getenv("OPENAI_API_KEY")
     if api_key:
         return api_key.strip()
-    
+
     # Try Google Secret Manager in production
     try:
         from google.cloud import secretmanager
-        import google.auth
-        
+        # import google.auth
+
         client = secretmanager.SecretManagerServiceClient()
         project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
-        
+
         # If no project ID set, try to infer it
         if not project_id:
             try:
@@ -164,58 +180,94 @@ def get_openai_api_key():
                     project_id = inferred_project
             except Exception:
                 pass
-        
+
         if project_id:
             secret_name = f"projects/{project_id}/secrets/openai-api-key/versions/latest"
-            response = client.access_secret_version(request={"name": secret_name})
+            response = client.access_secret_version(
+                request={"name": secret_name})
             return response.payload.data.decode("UTF-8").strip()
     except Exception as e:
         print(f"Warning: Could not load from Secret Manager: {e}")
-    
+
     return None
+
 
 # Initialize OpenAI API key
 openai_api_key = get_openai_api_key()
 if not openai_api_key:
-    raise RuntimeError("OPENAI_API_KEY not set. Please set it in environment or Google Secret Manager.")
+    raise RuntimeError(
+        "OPENAI_API_KEY not set. Please set it in environment or Google Secret Manager.")
 
 os.environ["OPENAI_API_KEY"] = openai_api_key
 
-# Initialize OpenAI client with proper timeout configuration
+# Initialize OpenAI clients with proper timeout configuration.
+# We keep BOTH a sync and an async client:
+#   - openai_client (sync): used by services (emotion, memory, finetuning, etc.)
+#     that take a client by injection and were written for the sync API.
+#   - async_openai_client: used by FastAPI async handlers (/chat, /chat/stream,
+#     /chat/voice) so OpenAI calls don't block the event loop. Switching async
+#     handlers to AsyncOpenAI is the single biggest perf win — under load, the
+#     event loop can serve other requests during the 2-30s LLM round-trip
+#     instead of stalling.
 _httpx_client = httpx.Client(
+    timeout=httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=30.0),
+)
+_httpx_async_client = httpx.AsyncClient(
     timeout=httpx.Timeout(connect=10.0, read=30.0, write=30.0, pool=30.0),
 )
 
 openai_client = OpenAI(
     api_key=openai_api_key,
-    http_client=_httpx_client
+    http_client=_httpx_client,
+)
+async_openai_client = AsyncOpenAI(
+    api_key=openai_api_key,
+    http_client=_httpx_async_client,
 )
 
 # Configuration (from environment variables via config service)
 _app_config = get_config()
 OPENAI_MODEL = _app_config.OPENAI_MODEL
+OPENAI_VISION_MODEL = _app_config.OPENAI_VISION_MODEL
 EMBEDDING_MODEL = _app_config.EMBEDDING_MODEL
 FAISS_INDEX_PATH = _app_config.FAISS_INDEX_PATH
 
-# Initialize emotion detection service (uses same OpenAI client)
-get_emotion_service(openai_client=openai_client, model=OPENAI_MODEL)
+# Vision client for image-based mood analysis. Uses a dedicated key if
+# OPENAI_VISION_API_KEY is set, otherwise reuses the main OpenAI key/client.
+_vision_api_key = os.getenv("OPENAI_VISION_API_KEY", "").strip()
+if _vision_api_key and _vision_api_key != openai_api_key:
+    vision_openai_client = OpenAI(
+        api_key=_vision_api_key, http_client=_httpx_client)
+else:
+    vision_openai_client = openai_client
+
+# Initialize emotion detection service (text via main client, images via vision client)
+get_emotion_service(
+    openai_client=openai_client,
+    model=OPENAI_MODEL,
+    vision_client=vision_openai_client,
+    vision_model=OPENAI_VISION_MODEL,
+)
 
 # Initialize memory service (uses same OpenAI client + embedding model)
-get_memory_service(openai_client=openai_client, embedding_model=EMBEDDING_MODEL)
+get_memory_service(openai_client=openai_client,
+                   embedding_model=EMBEDDING_MODEL)
 
 # Inject OpenAI client into fine-tuning service (Phase 18)
 try:
     _ft_svc = get_finetuning_service()
     _ft_svc.set_openai_client(openai_client)
 except Exception as _ft_err:
-    print(f"Warning: Could not inject OpenAI client into FT service: {_ft_err}")
+    print(
+        f"Warning: Could not inject OpenAI client into FT service: {_ft_err}")
 
 # Inject OpenAI client into escalation service (Phase 20)
 try:
     _esc_svc = get_escalation_service()
     _esc_svc.set_openai_client(openai_client)
 except Exception as _esc_err:
-    print(f"Warning: Could not inject OpenAI client into escalation service: {_esc_err}")
+    print(
+        f"Warning: Could not inject OpenAI client into escalation service: {_esc_err}")
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -224,10 +276,26 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS middleware - Enhanced for FlutterFlow compatibility
+# CORS middleware
+# Locked to local dev origins. Mobile apps don't enforce CORS, so they're
+# unaffected. When you deploy a production web frontend, add its origin to
+# CORS_ALLOWED_ORIGINS in your environment (comma-separated), e.g.
+#   CORS_ALLOWED_ORIGINS=https://app.lucille.com,https://lucille.com
+_DEFAULT_DEV_ORIGINS = [
+    "http://localhost:3000",   # Next.js / Create React App
+    "http://localhost:5173",   # Vite
+    "http://localhost:8080",   # generic dev / FastAPI test UI
+    "http://localhost:4200",   # Angular
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:8080",
+]
+_extra_origins = [
+    o.strip() for o in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for FlutterFlow
+    allow_origins=_DEFAULT_DEV_ORIGINS + _extra_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
@@ -289,12 +357,15 @@ embeddings_model = OpenAIEmbeddings(
     openai_api_key=openai_api_key,
 )
 
+
 def load_faiss_vectorstore(local_path: str) -> FAISS:
     """Load FAISS index from disk"""
     os.makedirs(local_path, exist_ok=True)
-    vs = FAISS.load_local(local_path, embeddings=embeddings_model, allow_dangerous_deserialization=True)
+    vs = FAISS.load_local(local_path, embeddings=embeddings_model,
+                          allow_dangerous_deserialization=True)
     print(f"✅ Loaded FAISS vector store (dimension: {vs.index.d})")
     return vs
+
 
 # Load vector store
 VectorStore = load_faiss_vectorstore(FAISS_INDEX_PATH)
@@ -317,59 +388,68 @@ try:
 except KeyError:
     tokenizer = tiktoken.get_encoding("cl100k_base")
 
+
 def count_tokens(text: str) -> int:
     """Count tokens in text"""
     return len(tokenizer.encode(text))
 
+
 def retrieve_relevant_context(query: str, k: int = 5, similarity_threshold: float = 1.1) -> str:
     """
     Retrieve relevant context from FAISS vector store for RAG.
-    
+
     Args:
         query: User's query
         k: Number of top results to retrieve
         similarity_threshold: Maximum distance threshold (lower is more similar)
-    
+
     Returns:
         Combined context string from retrieved documents
     """
     if not DOCS or len(DOCS) == 0:
         logger.warning("No documents available for RAG retrieval")
         return ""
-    
+
     try:
         # Embed the query using OpenAI embeddings
         query_embedding = embeddings_model.embed_query(query)
         query_vector = np.array([query_embedding], dtype=np.float32)
-        
+
         # Search in FAISS index
         distances, indices = VectorStore.index.search(query_vector, k)
-        
+
         # Filter by similarity threshold and collect relevant docs
         retrieved_contexts = []
         for idx, distance in zip(indices[0], distances[0]):
             if distance <= similarity_threshold and 0 <= idx < len(DOCS):
                 retrieved_contexts.append(DOCS[idx].page_content)
-        
+
         if retrieved_contexts:
-            logger.info(f"🔍 Retrieved {len(retrieved_contexts)} relevant documents for query")
+            logger.info(
+                f"🔍 Retrieved {len(retrieved_contexts)} relevant documents for query")
             return "\n\n".join(retrieved_contexts)
         else:
-            logger.info(f"No documents found within similarity threshold ({similarity_threshold})")
+            logger.info(
+                f"No documents found within similarity threshold ({similarity_threshold})")
             return ""
-            
+
     except Exception as e:
         logger.error(f"❌ Error retrieving context: {e}")
         return ""
 
+
 # Session management
-session_histories: Dict[str, BaseChatMessageHistory] = defaultdict(ChatMessageHistory)
+session_histories: Dict[str, BaseChatMessageHistory] = defaultdict(
+    ChatMessageHistory)
 session_summaries: Dict[str, str] = defaultdict(str)
 
 # Initialize summarization LLM
-summary_llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0, request_timeout=120, max_retries=3)
+summary_llm = ChatOpenAI(model=OPENAI_MODEL, temperature=0,
+                         request_timeout=120, max_retries=3)
 
 # Session validation function
+
+
 def validate_session_id(session_id: str) -> str:
     """Validate and normalize session ID"""
     if not session_id or session_id == "unique_identifier" or session_id == "null" or session_id == "":
@@ -379,10 +459,30 @@ def validate_session_id(session_id: str) -> str:
 # Request/Response models now imported from models.py
 
 # Main chat endpoint
+
+
 @app.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
-    """Main chat endpoint with Firebase session management"""
+async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
+    """Main chat endpoint with Firebase session management.
+
+    Authentication: requires either a Firebase ID token or the
+    INTERNAL_SERVICE_KEY (for backend/test calls). Authenticated users may
+    only chat as themselves; admins and the service account may chat as any
+    user_id (useful for testing and backfills).
+    """
     try:
+        # Enforce that the request's user_id matches the authenticated user.
+        # Admins and the service account can chat as any user.
+        if not _is_admin(user):
+            if request.user_id and request.user_id != user.get("uid"):
+                raise HTTPException(
+                    status_code=403,
+                    detail="user_id in request does not match authenticated user",
+                )
+            # Default user_id to the authenticated uid if not provided
+            if not request.user_id:
+                request.user_id = user.get("uid")
+
         # Validate and normalize session ID
         session_id = validate_session_id(request.session_id)
         prompt = sanitize_input(request.message)
@@ -401,11 +501,14 @@ async def chat(request: ChatRequest):
                 cache_key = user_profile_key(request.user_id)
                 profile_data = cache.get(cache_key)
                 if profile_data is None:
-                    profile_data = user_service.get_user_profile(request.user_id)
+                    profile_data = user_service.get_user_profile(
+                        request.user_id)
                     if profile_data:
-                        cache.set(cache_key, profile_data, ttl=get_config().CACHE_TTL_USER_PROFILE)
+                        cache.set(cache_key, profile_data,
+                                  ttl=get_config().CACHE_TTL_USER_PROFILE)
                 if profile_data:
-                    user_profile_text = user_service.format_profile_for_prompt(profile_data)
+                    user_profile_text = user_service.format_profile_for_prompt(
+                        profile_data)
                     comm_pref = (
                         profile_data.get("persona", {})
                         .get("communication_preference", "empathetic")
@@ -420,7 +523,8 @@ async def chat(request: ChatRequest):
         if request.user_id and profile_data:
             try:
                 cultural_svc = get_cultural_service()
-                cultural_ctx = cultural_svc.extract_cultural_context(profile_data)
+                cultural_ctx = cultural_svc.extract_cultural_context(
+                    profile_data)
                 country_code = cultural_ctx.country_code
                 cultural_context_text = cultural_svc.get_cultural_prompt_context(
                     cultural_ctx
@@ -433,9 +537,11 @@ async def chat(request: ChatRequest):
         if request.user_id:
             try:
                 wearable_svc = get_wearable_service()
-                health_context_text = wearable_svc.format_health_context(request.user_id)
+                health_context_text = wearable_svc.format_health_context(
+                    request.user_id)
                 if health_context_text:
-                    logger.info(f"💓 Health context loaded for user {request.user_id}")
+                    logger.info(
+                        f"💓 Health context loaded for user {request.user_id}")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to load health context: {e}")
 
@@ -508,7 +614,8 @@ async def chat(request: ChatRequest):
                     pass
 
             # Update chat history for continuity
-            chat_history = session_histories.get(session_id, ChatMessageHistory())
+            chat_history = session_histories.get(
+                session_id, ChatMessageHistory())
             chat_history.add_user_message(prompt)
             chat_history.add_ai_message(crisis_response)
             session_histories[session_id] = chat_history
@@ -531,7 +638,8 @@ async def chat(request: ChatRequest):
         if request.user_id:
             try:
                 dep_svc = get_dependency_service()
-                dep_metrics = dep_svc.record_interaction(request.user_id, prompt)
+                dep_metrics = dep_svc.record_interaction(
+                    request.user_id, prompt)
                 dep_assessment = dep_svc.assess_dependency(
                     request.user_id, dep_metrics, prompt
                 )
@@ -581,7 +689,8 @@ async def chat(request: ChatRequest):
             existing_session = None
 
         # 🔍 RAG: Retrieve relevant context from vector store
-        retrieved_context = retrieve_relevant_context(prompt, k=5, similarity_threshold=1.1)
+        retrieved_context = retrieve_relevant_context(
+            prompt, k=5, similarity_threshold=1.1)
 
         # Build emotion context text for prompt engine
         emotion_context_text = ""
@@ -598,7 +707,8 @@ async def chat(request: ChatRequest):
                 therapy_svc = get_therapy_service()
                 active_ex = therapy_svc.get_active_exercise(request.user_id)
                 if active_ex:
-                    active_exercise_text = therapy_svc.format_exercise_for_prompt(active_ex)
+                    active_exercise_text = therapy_svc.format_exercise_for_prompt(
+                        active_ex)
             except Exception as e:
                 logger.warning(f"Failed to load active exercise: {e}")
 
@@ -607,7 +717,8 @@ async def chat(request: ChatRequest):
                 therapy_svc = get_therapy_service()
                 due_tasks = therapy_svc.get_due_tasks(request.user_id)
                 if due_tasks:
-                    due_tasks_text = therapy_svc.format_due_tasks_for_prompt(due_tasks)
+                    due_tasks_text = therapy_svc.format_due_tasks_for_prompt(
+                        due_tasks)
             except Exception as e:
                 logger.warning(f"Failed to load due tasks: {e}")
 
@@ -670,9 +781,11 @@ async def chat(request: ChatRequest):
         history_messages = []
         for msg in chat_history.messages[-6:]:  # Last 6 messages for context
             if isinstance(msg, HumanMessage):
-                history_messages.append({"role": "user", "content": msg.content})
+                history_messages.append(
+                    {"role": "user", "content": msg.content})
             elif isinstance(msg, AIMessage):
-                history_messages.append({"role": "assistant", "content": msg.content})
+                history_messages.append(
+                    {"role": "assistant", "content": msg.content})
 
         # Create messages for OpenAI
         messages = [{"role": "system", "content": system_prompt}]
@@ -689,7 +802,8 @@ async def chat(request: ChatRequest):
                 request.user_id
             )
             if is_fine_tuned:
-                logger.info(f"FT A/B: user {request.user_id} -> fine-tuned model")
+                logger.info(
+                    f"FT A/B: user {request.user_id} -> fine-tuned model")
         except Exception:
             model_to_use = OPENAI_MODEL
 
@@ -699,7 +813,7 @@ async def chat(request: ChatRequest):
             tool_defs = agent_svc.get_tool_definitions()
 
             try:
-                response = openai_client.chat.completions.create(
+                response = await async_openai_client.chat.completions.create(
                     model=model_to_use,
                     messages=messages,
                     max_tokens=1000,
@@ -709,11 +823,12 @@ async def chat(request: ChatRequest):
                 )
             except Exception as model_err:
                 if is_fine_tuned:
-                    logger.warning(f"Fine-tuned model failed, falling back to base: {model_err}")
+                    logger.warning(
+                        f"Fine-tuned model failed, falling back to base: {model_err}")
                     model_to_use = OPENAI_MODEL
                     is_fine_tuned = False
                     ab_group = "base"
-                    response = openai_client.chat.completions.create(
+                    response = await async_openai_client.chat.completions.create(
                         model=model_to_use,
                         messages=messages,
                         max_tokens=1000,
@@ -748,7 +863,7 @@ async def chat(request: ChatRequest):
                         "tool_call_id": tool_call.id,
                         "content": tool_result,
                     })
-                response = openai_client.chat.completions.create(
+                response = await async_openai_client.chat.completions.create(
                     model=model_to_use,
                     messages=messages,
                     max_tokens=1000,
@@ -760,13 +875,16 @@ async def chat(request: ChatRequest):
             bot_response = response.choices[0].message.content or ""
         except APIConnectionError as e:
             print(f"❌ OpenAI network error: {e}")
-            raise HTTPException(status_code=502, detail=f"OpenAI network error: {e}")
+            raise HTTPException(
+                status_code=502, detail=f"OpenAI network error: {e}")
         except RateLimitError as e:
             print(f"❌ OpenAI rate limit: {e}")
-            raise HTTPException(status_code=429, detail="OpenAI rate limit hit")
+            raise HTTPException(
+                status_code=429, detail="OpenAI rate limit hit")
         except Exception as e:
             print(f"❌ OpenAI API call failed: {e}")
-            raise HTTPException(status_code=500, detail=f"OpenAI API error: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"OpenAI API error: {e}")
 
         # ── Phase 9: Output Safety Validation ──
         try:
@@ -774,7 +892,8 @@ async def chat(request: ChatRequest):
                 bot_response, safety_check, country_code=country_code
             )
             if output_modified:
-                logger.info("Safety: bot response was modified by output validation")
+                logger.info(
+                    "Safety: bot response was modified by output validation")
         except Exception as e:
             logger.warning(f"Output validation failed, using original: {e}")
 
@@ -835,9 +954,10 @@ async def chat(request: ChatRequest):
                 summary_prompt = f"Please summarize the following conversation history in a concise way, focusing on key topics and decisions:\n\n{full_text}"
                 refined_summary = summary_llm.invoke(summary_prompt).content
                 session_summaries[session_id] = refined_summary
-                
+
                 # Update summary in Firebase
-                firebase_service.update_session_summary(session_id, refined_summary)
+                firebase_service.update_session_summary(
+                    session_id, refined_summary)
             except Exception as e:
                 print(f"⚠️ Summarization failed: {e}")
 
@@ -847,16 +967,19 @@ async def chat(request: ChatRequest):
             current_summary = session_summaries.get(session_id, "")
 
             if existing_session:
-                firebase_service.update_chat_session(session_id, current_messages, current_summary)
+                firebase_service.update_chat_session(
+                    session_id, current_messages, current_summary)
             else:
-                firebase_service.store_chat_session(session_id, current_messages, current_summary)
+                firebase_service.store_chat_session(
+                    session_id, current_messages, current_summary)
         except Exception as e:
             print(f"⚠️ Failed to store session in Firebase: {e}")
 
         # Link session to user if user_id was provided
         if request.user_id:
             try:
-                firebase_service.link_session_to_user(session_id, request.user_id)
+                firebase_service.link_session_to_user(
+                    session_id, request.user_id)
             except Exception as e:
                 logger.warning(f"⚠️ Failed to link session to user: {e}")
 
@@ -864,7 +987,8 @@ async def chat(request: ChatRequest):
         if request.user_id:
             try:
                 memory_svc = get_memory_service()
-                memory_svc.extract_memories(request.user_id, prompt, bot_response)
+                memory_svc.extract_memories(
+                    request.user_id, prompt, bot_response)
             except Exception as e:
                 logger.warning(f"⚠️ Memory extraction failed: {e}")
 
@@ -904,12 +1028,16 @@ async def chat(request: ChatRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 # Streaming chat endpoint
+
+
 @app.post("/chat/stream")
-async def chat_stream(request: ChatRequest):
+async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_user)):
     """
     Streaming chat endpoint with RAG enhancement (FlutterFlow-compatible).
     Returns Server-Sent Events (SSE) for real-time token streaming.
-    
+
+    Auth: same as /chat — Firebase ID token or INTERNAL_SERVICE_KEY.
+
     ALL messages have the SAME format:
     {
         "content": "token",      <- The streamed token (empty string when done)
@@ -918,10 +1046,20 @@ async def chat_stream(request: ChatRequest):
         "response": "...",       <- Empty during streaming, full response when done
         "message_count": N       <- 0 during streaming, actual count when done
     }
-    
+
     Final signal: data: [DONE]
     """
     try:
+        # Enforce user_id matches authenticated user (admin/service account exempt)
+        if not _is_admin(user):
+            if request.user_id and request.user_id != user.get("uid"):
+                raise HTTPException(
+                    status_code=403,
+                    detail="user_id in request does not match authenticated user",
+                )
+            if not request.user_id:
+                request.user_id = user.get("uid")
+
         # Validate and normalize session ID
         session_id = validate_session_id(request.session_id)
         prompt = sanitize_input(request.message)
@@ -942,11 +1080,14 @@ async def chat_stream(request: ChatRequest):
                 cache_key = user_profile_key(request.user_id)
                 profile_data = cache.get(cache_key)
                 if profile_data is None:
-                    profile_data = user_service.get_user_profile(request.user_id)
+                    profile_data = user_service.get_user_profile(
+                        request.user_id)
                     if profile_data:
-                        cache.set(cache_key, profile_data, ttl=get_config().CACHE_TTL_USER_PROFILE)
+                        cache.set(cache_key, profile_data,
+                                  ttl=get_config().CACHE_TTL_USER_PROFILE)
                 if profile_data:
-                    user_profile_text = user_service.format_profile_for_prompt(profile_data)
+                    user_profile_text = user_service.format_profile_for_prompt(
+                        profile_data)
                     comm_pref = (
                         profile_data.get("persona", {})
                         .get("communication_preference", "empathetic")
@@ -961,7 +1102,8 @@ async def chat_stream(request: ChatRequest):
         if request.user_id and profile_data:
             try:
                 cultural_svc = get_cultural_service()
-                cultural_ctx = cultural_svc.extract_cultural_context(profile_data)
+                cultural_ctx = cultural_svc.extract_cultural_context(
+                    profile_data)
                 country_code = cultural_ctx.country_code
                 cultural_context_text = cultural_svc.get_cultural_prompt_context(
                     cultural_ctx
@@ -974,9 +1116,11 @@ async def chat_stream(request: ChatRequest):
         if request.user_id:
             try:
                 wearable_svc = get_wearable_service()
-                health_context_text = wearable_svc.format_health_context(request.user_id)
+                health_context_text = wearable_svc.format_health_context(
+                    request.user_id)
                 if health_context_text:
-                    logger.info(f"💓 Health context loaded for user {request.user_id}")
+                    logger.info(
+                        f"💓 Health context loaded for user {request.user_id}")
             except Exception as e:
                 logger.warning(f"⚠️ Failed to load health context: {e}")
 
@@ -1049,7 +1193,8 @@ async def chat_stream(request: ChatRequest):
                     pass
 
             # Update chat history for continuity
-            chat_history = session_histories.get(session_id, ChatMessageHistory())
+            chat_history = session_histories.get(
+                session_id, ChatMessageHistory())
             chat_history.add_user_message(prompt)
             chat_history.add_ai_message(crisis_response)
             session_histories[session_id] = chat_history
@@ -1091,7 +1236,8 @@ async def chat_stream(request: ChatRequest):
         if request.user_id:
             try:
                 dep_svc = get_dependency_service()
-                dep_metrics = dep_svc.record_interaction(request.user_id, prompt)
+                dep_metrics = dep_svc.record_interaction(
+                    request.user_id, prompt)
                 dep_assessment = dep_svc.assess_dependency(
                     request.user_id, dep_metrics, prompt
                 )
@@ -1132,7 +1278,8 @@ async def chat_stream(request: ChatRequest):
             if existing_session:
                 summary = existing_session.get('summary', '')
                 session_summaries[session_id] = summary
-                logger.info(f"📱 Loaded existing session {session_id} from Firebase")
+                logger.info(
+                    f"📱 Loaded existing session {session_id} from Firebase")
             else:
                 summary = session_summaries.get(session_id, "")
         except Exception as e:
@@ -1141,7 +1288,8 @@ async def chat_stream(request: ChatRequest):
             existing_session = None
 
         # 🔍 RAG: Retrieve relevant context from vector store
-        retrieved_context = retrieve_relevant_context(prompt, k=5, similarity_threshold=1.1)
+        retrieved_context = retrieve_relevant_context(
+            prompt, k=5, similarity_threshold=1.1)
 
         # Build emotion context text for prompt engine
         emotion_context_text = ""
@@ -1158,7 +1306,8 @@ async def chat_stream(request: ChatRequest):
                 therapy_svc = get_therapy_service()
                 active_ex = therapy_svc.get_active_exercise(request.user_id)
                 if active_ex:
-                    active_exercise_text = therapy_svc.format_exercise_for_prompt(active_ex)
+                    active_exercise_text = therapy_svc.format_exercise_for_prompt(
+                        active_ex)
             except Exception as e:
                 logger.warning(f"Failed to load active exercise: {e}")
 
@@ -1167,7 +1316,8 @@ async def chat_stream(request: ChatRequest):
                 therapy_svc = get_therapy_service()
                 due_tasks = therapy_svc.get_due_tasks(request.user_id)
                 if due_tasks:
-                    due_tasks_text = therapy_svc.format_due_tasks_for_prompt(due_tasks)
+                    due_tasks_text = therapy_svc.format_due_tasks_for_prompt(
+                        due_tasks)
             except Exception as e:
                 logger.warning(f"Failed to load due tasks: {e}")
 
@@ -1230,9 +1380,11 @@ async def chat_stream(request: ChatRequest):
         history_messages = []
         for msg in chat_history.messages[-6:]:  # Last 6 messages for context
             if isinstance(msg, HumanMessage):
-                history_messages.append({"role": "user", "content": msg.content})
+                history_messages.append(
+                    {"role": "user", "content": msg.content})
             elif isinstance(msg, AIMessage):
-                history_messages.append({"role": "assistant", "content": msg.content})
+                history_messages.append(
+                    {"role": "assistant", "content": msg.content})
 
         # Create messages for OpenAI
         messages = [{"role": "system", "content": system_prompt}]
@@ -1262,7 +1414,7 @@ async def chat_stream(request: ChatRequest):
                 tool_defs = agent_svc.get_tool_definitions()
 
                 try:
-                    tool_response = openai_client.chat.completions.create(
+                    tool_response = await async_openai_client.chat.completions.create(
                         model=stream_model_to_use,
                         messages=messages,
                         max_tokens=1000,
@@ -1272,11 +1424,12 @@ async def chat_stream(request: ChatRequest):
                     )
                 except Exception as model_err:
                     if stream_is_fine_tuned:
-                        logger.warning(f"Stream: Fine-tuned model failed, falling back: {model_err}")
+                        logger.warning(
+                            f"Stream: Fine-tuned model failed, falling back: {model_err}")
                         stream_model_to_use = OPENAI_MODEL
                         stream_is_fine_tuned = False
                         stream_ab_group = "base"
-                        tool_response = openai_client.chat.completions.create(
+                        tool_response = await async_openai_client.chat.completions.create(
                             model=stream_model_to_use,
                             messages=messages,
                             max_tokens=1000,
@@ -1310,7 +1463,7 @@ async def chat_stream(request: ChatRequest):
                             "tool_call_id": tool_call.id,
                             "content": tool_result,
                         })
-                    tool_response = openai_client.chat.completions.create(
+                    tool_response = await async_openai_client.chat.completions.create(
                         model=stream_model_to_use,
                         messages=messages,
                         max_tokens=1000,
@@ -1339,14 +1492,14 @@ async def chat_stream(request: ChatRequest):
                         yield f"data: {event_data}\n\n"
                 else:
                     # No content yet (rare edge case) — stream a fresh call without tools
-                    stream = openai_client.chat.completions.create(
+                    stream = await async_openai_client.chat.completions.create(
                         model=stream_model_to_use,
                         messages=messages,
                         max_tokens=1000,
                         temperature=0.7,
                         stream=True,
                     )
-                    for chunk in stream:
+                    async for chunk in stream:
                         if chunk.choices[0].delta.content:
                             token = chunk.choices[0].delta.content
                             full_response += token
@@ -1365,7 +1518,8 @@ async def chat_stream(request: ChatRequest):
                         full_response, safety_check, country_code=country_code
                     )
                     if output_modified:
-                        logger.info("Safety: streaming response modified by output validation")
+                        logger.info(
+                            "Safety: streaming response modified by output validation")
                 except Exception as e:
                     logger.warning(f"Output validation failed in stream: {e}")
 
@@ -1413,31 +1567,37 @@ async def chat_stream(request: ChatRequest):
                 chat_history.add_user_message(prompt)
                 chat_history.add_ai_message(full_response)
                 session_histories[session_id] = chat_history
-                
+
                 # Store/Update session in Firebase (async-safe)
                 try:
                     current_messages = chat_history.messages
                     current_summary = session_summaries.get(session_id, "")
 
                     if existing_session:
-                        firebase_service.update_chat_session(session_id, current_messages, current_summary)
+                        firebase_service.update_chat_session(
+                            session_id, current_messages, current_summary)
                     else:
-                        firebase_service.store_chat_session(session_id, current_messages, current_summary)
+                        firebase_service.store_chat_session(
+                            session_id, current_messages, current_summary)
                 except Exception as e:
-                    logger.warning(f"⚠️ Failed to store session in Firebase: {e}")
+                    logger.warning(
+                        f"⚠️ Failed to store session in Firebase: {e}")
 
                 # Link session to user if user_id was provided
                 if request.user_id:
                     try:
-                        firebase_service.link_session_to_user(session_id, request.user_id)
+                        firebase_service.link_session_to_user(
+                            session_id, request.user_id)
                     except Exception as e:
-                        logger.warning(f"⚠️ Failed to link session to user: {e}")
+                        logger.warning(
+                            f"⚠️ Failed to link session to user: {e}")
 
                 # Extract and store memories from this conversation turn
                 if request.user_id:
                     try:
                         memory_svc = get_memory_service()
-                        memory_svc.extract_memories(request.user_id, prompt, full_response)
+                        memory_svc.extract_memories(
+                            request.user_id, prompt, full_response)
                     except Exception as e:
                         logger.warning(f"⚠️ Memory extraction failed: {e}")
 
@@ -1447,9 +1607,11 @@ async def chat_stream(request: ChatRequest):
                     logger.info("🔁 Summarizing chat history...")
                     try:
                         summary_prompt = f"Please summarize the following conversation history in a concise way, focusing on key topics and decisions:\n\n{full_text}"
-                        refined_summary = summary_llm.invoke(summary_prompt).content
+                        refined_summary = summary_llm.invoke(
+                            summary_prompt).content
                         session_summaries[session_id] = refined_summary
-                        firebase_service.update_session_summary(session_id, refined_summary)
+                        firebase_service.update_session_summary(
+                            session_id, refined_summary)
                     except Exception as e:
                         logger.warning(f"⚠️ Summarization failed: {e}")
 
@@ -1465,17 +1627,19 @@ async def chat_stream(request: ChatRequest):
                 })
                 yield f"data: {done_data}\n\n"
                 yield "data: [DONE]\n\n"
-                
+
                 logger.info(f"✅ Streaming completed for session {session_id}")
-                
+
             except APIConnectionError as e:
                 logger.error(f"❌ OpenAI network error: {e}")
-                error_data = json.dumps({"type": "error", "message": f"OpenAI network error: {e}"})
+                error_data = json.dumps(
+                    {"type": "error", "message": f"OpenAI network error: {e}"})
                 yield f"data: {error_data}\n\n"
                 yield "data: [DONE]\n\n"
             except RateLimitError as e:
                 logger.error(f"❌ OpenAI rate limit: {e}")
-                error_data = json.dumps({"type": "error", "message": "OpenAI rate limit hit"})
+                error_data = json.dumps(
+                    {"type": "error", "message": "OpenAI rate limit hit"})
                 yield f"data: {error_data}\n\n"
                 yield "data: [DONE]\n\n"
             except Exception as e:
@@ -1483,7 +1647,7 @@ async def chat_stream(request: ChatRequest):
                 error_data = json.dumps({"type": "error", "message": str(e)})
                 yield f"data: {error_data}\n\n"
                 yield "data: [DONE]\n\n"
-        
+
         return StreamingResponse(
             event_generator(),
             media_type="text/event-stream",
@@ -1493,12 +1657,14 @@ async def chat_stream(request: ChatRequest):
                 "X-Accel-Buffering": "no"  # Disable nginx buffering
             }
         )
-        
+
     except Exception as e:
         logger.error(f"❌ Error in streaming chat endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Health check endpoint
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint with basic status."""
@@ -1594,6 +1760,8 @@ async def root():
     })
 
 # Chat interface
+
+
 @app.get("/chat-interface", response_class=HTMLResponse)
 async def chat_interface():
     """Simple HTML chat interface"""
@@ -1655,6 +1823,8 @@ async def chat_interface():
     """)
 
 # Session management endpoints
+
+
 @app.get("/chat/{session_id}", response_model=ChatResponse)
 async def get_chat_history(session_id: str):
     """Retrieve chat history for a session"""
@@ -1663,9 +1833,10 @@ async def get_chat_history(session_id: str):
         session_id = validate_session_id(session_id)
         firebase_service = get_firebase_service()
         session_data = firebase_service.get_chat_session(session_id)
-        
+
         if not session_data:
-            raise HTTPException(status_code=404, detail="No chat history found.")
+            raise HTTPException(
+                status_code=404, detail="No chat history found.")
 
         messages = session_data.get('messages', [])
         conversation_history = [msg.get('content', '') for msg in messages]
@@ -1682,6 +1853,7 @@ async def get_chat_history(session_id: str):
         print(f"❌ Error retrieving chat history: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.delete("/chat/{session_id}")
 async def delete_chat_session(session_id: str):
     """Delete a chat session"""
@@ -1690,14 +1862,14 @@ async def delete_chat_session(session_id: str):
         session_id = validate_session_id(session_id)
         firebase_service = get_firebase_service()
         success = firebase_service.delete_chat_session(session_id)
-        
+
         if success:
             # Clear from memory
             if session_id in session_histories:
                 del session_histories[session_id]
             if session_id in session_summaries:
                 del session_summaries[session_id]
-            
+
             return JSONResponse(content={
                 "session_id": session_id,
                 "status": "success",
@@ -1710,6 +1882,7 @@ async def delete_chat_session(session_id: str):
         print(f"❌ Error deleting session: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.get("/sessions/")
 async def list_sessions(limit: int = 100):
     """List recent chat sessions"""
@@ -1717,7 +1890,7 @@ async def list_sessions(limit: int = 100):
         firebase_service = get_firebase_service()
         sessions = firebase_service.list_sessions(limit)
         return JSONResponse(content={
-            "sessions": sessions, 
+            "sessions": sessions,
             "count": len(sessions),
             "status": "success",
             "timestamp": datetime.now().isoformat()
@@ -1727,6 +1900,8 @@ async def list_sessions(limit: int = 100):
         raise HTTPException(status_code=500, detail=str(e))
 
 # Session validation endpoint
+
+
 @app.get("/session/{session_id}/validate")
 async def validate_session(session_id: str):
     """Validate if a session exists"""
@@ -1735,7 +1910,7 @@ async def validate_session(session_id: str):
         session_id = validate_session_id(session_id)
         firebase_service = get_firebase_service()
         session_data = firebase_service.get_chat_session(session_id)
-        
+
         return JSONResponse(content={
             "session_id": session_id,
             "valid": session_data is not None,
@@ -1755,6 +1930,7 @@ async def validate_session(session_id: str):
         )
 
 # ── User Profile Endpoints ──────────────────────────────
+
 
 @app.post("/users/onboard", response_model=OnboardingResponse)
 async def onboard_user(request: OnboardingRequest):
@@ -1811,7 +1987,8 @@ async def onboard_user(request: OnboardingRequest):
 
         created_id = user_service.create_user_profile(profile.model_dump())
         if not created_id:
-            raise HTTPException(status_code=500, detail="Failed to create user profile")
+            raise HTTPException(
+                status_code=500, detail="Failed to create user profile")
 
         # Invalidate any cached profile for this user
         get_cache().invalidate(user_profile_key(created_id))
@@ -1838,7 +2015,8 @@ async def get_user_profile(user_id: str):
         profile_data = user_service.get_user_profile(user_id)
 
         if not profile_data:
-            raise HTTPException(status_code=404, detail="User profile not found")
+            raise HTTPException(
+                status_code=404, detail="User profile not found")
 
         profile = UserProfile(**profile_data)
         return UserProfileResponse(
@@ -1863,7 +2041,8 @@ async def update_user_profile(user_id: str, request: UserProfileUpdateRequest):
 
         existing = user_service.get_user_profile(user_id)
         if not existing:
-            raise HTTPException(status_code=404, detail="User profile not found")
+            raise HTTPException(
+                status_code=404, detail="User profile not found")
 
         update_data = {}
         if request.cognitive is not None:
@@ -1878,11 +2057,13 @@ async def update_user_profile(user_id: str, request: UserProfileUpdateRequest):
             update_data["persona"] = request.persona.model_dump()
 
         if not update_data:
-            raise HTTPException(status_code=400, detail="No update data provided")
+            raise HTTPException(
+                status_code=400, detail="No update data provided")
 
         success = user_service.update_user_profile(user_id, update_data)
         if not success:
-            raise HTTPException(status_code=500, detail="Failed to update profile")
+            raise HTTPException(
+                status_code=500, detail="Failed to update profile")
 
         # Invalidate cached profile
         get_cache().invalidate(user_profile_key(user_id))
@@ -1911,7 +2092,8 @@ async def delete_user_profile(user_id: str):
         user_service = get_user_service()
         success = user_service.delete_user_profile(user_id)
         if not success:
-            raise HTTPException(status_code=404, detail="User profile not found or could not be deleted")
+            raise HTTPException(
+                status_code=404, detail="User profile not found or could not be deleted")
         return JSONResponse(content={
             "user_id": user_id,
             "status": "success",
@@ -1930,9 +2112,11 @@ async def record_mood(user_id: str, mood_entry: MoodEntry):
     """Append a mood entry to a user's affective layer"""
     try:
         user_service = get_user_service()
-        success = user_service.append_mood_entry(user_id, mood_entry.model_dump())
+        success = user_service.append_mood_entry(
+            user_id, mood_entry.model_dump())
         if not success:
-            raise HTTPException(status_code=404, detail="User not found or update failed")
+            raise HTTPException(
+                status_code=404, detail="User not found or update failed")
         return JSONResponse(content={
             "user_id": user_id,
             "status": "success",
@@ -1944,6 +2128,73 @@ async def record_mood(user_id: str, mood_entry: MoodEntry):
     except Exception as e:
         logger.error(f"❌ Error recording mood: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/users/{user_id}/mood/analyze-image",
+          dependencies=[Depends(require_same_user())])
+async def analyze_mood_image(
+    user_id: str,
+    file: UploadFile = File(...),
+    store: bool = True,
+):
+    """Analyze a user's facial emotion from an uploaded image (OpenAI Vision).
+
+    Replaces the legacy ViT classifier (vit_emotion_api/). Detects the dominant
+    emotion and, by default, records it as a mood entry with
+    detected_via='image_auto'. Pass ?store=false to analyze without saving.
+    """
+    # Validate the upload is an image
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=400, detail="Uploaded file must be an image")
+
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Empty image file")
+
+    max_bytes = get_config().MAX_IMAGE_SIZE_MB * 1024 * 1024
+    if len(contents) > max_bytes:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Image exceeds {get_config().MAX_IMAGE_SIZE_MB}MB limit")
+
+    # Classify emotion via OpenAI vision
+    try:
+        emotion_svc = get_emotion_service()
+        detection = emotion_svc.detect_from_image(contents, file.content_type)
+    except Exception as e:
+        logger.error(f"❌ Image mood analysis failed: {e}")
+        raise HTTPException(
+            status_code=502, detail="Image mood analysis failed")
+
+    # Optionally store as a mood entry (detected_via='image_auto')
+    stored = False
+    if store:
+        try:
+            user_service = get_user_service()
+            mood_entry = {
+                "mood": detection.emotion,
+                "intensity": detection.intensity,
+                "context": "Detected from uploaded image",
+                "recorded_at": datetime.now().isoformat(),
+                "detected_via": "image_auto",
+                "confidence": detection.confidence,
+                "intent": None,
+            }
+            stored = user_service.append_mood_entry(user_id, mood_entry)
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to store image mood entry: {e}")
+
+    return JSONResponse(content={
+        "user_id": user_id,
+        "status": "success",
+        "detected_emotion": detection.emotion,
+        "intensity": detection.intensity,
+        "confidence": detection.confidence,
+        "detected_via": "image_auto",
+        "stored": stored,
+        "timestamp": datetime.now().isoformat(),
+    })
 
 
 @app.get("/users/{user_id}/sessions")
@@ -1975,7 +2226,8 @@ async def list_memories(
     """List memories for a user, optionally filtered by type"""
     try:
         memory_svc = get_memory_service()
-        memories = memory_svc.get_memories(user_id, memory_type=memory_type, limit=limit)
+        memories = memory_svc.get_memories(
+            user_id, memory_type=memory_type, limit=limit)
         return JSONResponse(content={
             "user_id": user_id,
             "memories": memories,
@@ -2002,7 +2254,8 @@ async def create_memory(user_id: str, request: MemoryCreateRequest):
         }
         memory_id = memory_svc.store_memory(user_id, memory_data)
         if not memory_id:
-            raise HTTPException(status_code=500, detail="Failed to store memory")
+            raise HTTPException(
+                status_code=500, detail="Failed to store memory")
 
         return JSONResponse(content={
             "user_id": user_id,
@@ -2023,7 +2276,8 @@ async def search_memories(user_id: str, request: MemorySearchRequest):
     """Semantic search over a user's memories"""
     try:
         memory_svc = get_memory_service()
-        results = memory_svc.search_memories(user_id, request.query, limit=request.limit)
+        results = memory_svc.search_memories(
+            user_id, request.query, limit=request.limit)
         return JSONResponse(content={
             "user_id": user_id,
             "results": results,
@@ -2180,7 +2434,7 @@ async def start_exercise(user_id: str, request: StartExerciseRequest):
             raise HTTPException(
                 status_code=409,
                 detail=f"User already has an active exercise: {active.title}. "
-                       f"Complete or abandon it first."
+                f"Complete or abandon it first."
             )
 
         session = therapy_svc.start_exercise(user_id, request.exercise_id)
@@ -2227,9 +2481,11 @@ async def advance_exercise(user_id: str, session_id: str, note: str = ""):
     """Advance to the next step of an active exercise"""
     try:
         therapy_svc = get_therapy_service()
-        session = therapy_svc.advance_exercise(user_id, session_id, user_note=note)
+        session = therapy_svc.advance_exercise(
+            user_id, session_id, user_note=note)
         if session is None:
-            raise HTTPException(status_code=404, detail="Exercise session not found")
+            raise HTTPException(
+                status_code=404, detail="Exercise session not found")
 
         # Get the next step text
         next_step = ""
@@ -2260,7 +2516,8 @@ async def abandon_exercise(user_id: str, session_id: str):
         therapy_svc = get_therapy_service()
         success = therapy_svc.abandon_exercise(user_id, session_id)
         if not success:
-            raise HTTPException(status_code=404, detail="Exercise session not found")
+            raise HTTPException(
+                status_code=404, detail="Exercise session not found")
         return JSONResponse(content={
             "session_id": session_id,
             "status": "abandoned",
@@ -2339,7 +2596,8 @@ async def list_tasks(user_id: str, status: Optional[str] = None, limit: int = 20
     """List practice tasks for a user, optionally filtered by status"""
     try:
         therapy_svc = get_therapy_service()
-        tasks = therapy_svc.get_tasks(user_id, status_filter=status, limit=limit)
+        tasks = therapy_svc.get_tasks(
+            user_id, status_filter=status, limit=limit)
         return JSONResponse(content={
             "user_id": user_id,
             "tasks": tasks,
@@ -2379,7 +2637,8 @@ async def create_task(user_id: str, request: CreateTaskRequest):
         # Validate exercise exists
         exercise = therapy_svc.get_exercise(request.source_exercise_id)
         if exercise is None:
-            raise HTTPException(status_code=404, detail="Source exercise not found")
+            raise HTTPException(
+                status_code=404, detail="Source exercise not found")
 
         task = PracticeTask(
             user_id=user_id,
@@ -2393,7 +2652,8 @@ async def create_task(user_id: str, request: CreateTaskRequest):
 
         task_id = therapy_svc.create_task(user_id, task)
         if not task_id:
-            raise HTTPException(status_code=500, detail="Failed to create task")
+            raise HTTPException(
+                status_code=500, detail="Failed to create task")
 
         return JSONResponse(content={
             "user_id": user_id,
@@ -2424,7 +2684,8 @@ async def update_task(user_id: str, task_id: str, request: UpdateTaskRequest):
             updates["note"] = request.note
 
         if not updates:
-            raise HTTPException(status_code=400, detail="No update fields provided")
+            raise HTTPException(
+                status_code=400, detail="No update fields provided")
 
         result = therapy_svc.update_task(user_id, task_id, updates)
         if result is None:
@@ -2880,7 +3141,8 @@ async def export_user_data(user_id: str, request: Request):
             ip_address = request.client.host
 
         compliance_svc = get_compliance_service()
-        export = compliance_svc.export_user_data(user_id, ip_address=ip_address)
+        export = compliance_svc.export_user_data(
+            user_id, ip_address=ip_address)
         return JSONResponse(content=export.model_dump())
     except Exception as e:
         logger.error(f"Error exporting user data: {e}")
@@ -2902,7 +3164,8 @@ async def delete_all_user_data(user_id: str, request: Request):
             ip_address = request.client.host
 
         compliance_svc = get_compliance_service()
-        receipt = compliance_svc.delete_all_user_data(user_id, ip_address=ip_address)
+        receipt = compliance_svc.delete_all_user_data(
+            user_id, ip_address=ip_address)
         return JSONResponse(content=receipt.model_dump())
     except Exception as e:
         logger.error(f"Error deleting user data: {e}")
@@ -2940,7 +3203,8 @@ async def get_consent(user_id: str):
         compliance_svc = get_compliance_service()
         record = compliance_svc.get_consent(user_id)
         if record is None:
-            raise HTTPException(status_code=404, detail="No consent record found")
+            raise HTTPException(
+                status_code=404, detail="No consent record found")
         return JSONResponse(content=record.model_dump())
     except HTTPException:
         raise
@@ -3086,7 +3350,8 @@ async def get_soundscape_audio_url(soundscape_id: str):
     # Fall back to local audio files (development/demo)
     local_path = storage_svc.get_local_audio_path(soundscape_id)
     if local_path:
-        media_type = "audio/mpeg" if local_path.endswith(".mp3") else "audio/wav"
+        media_type = "audio/mpeg" if local_path.endswith(
+            ".mp3") else "audio/wav"
         return FileResponse(
             path=local_path,
             media_type=media_type,
@@ -3140,9 +3405,11 @@ async def get_audio_status():
 
 
 @app.post("/chat/voice", response_model=VoiceChatResponse)
-async def chat_voice(request: VoiceChatRequest):
+async def chat_voice(request: VoiceChatRequest, user: dict = Depends(get_current_user)):
     """
     Voice-enabled chat endpoint.
+
+    Auth: same as /chat — Firebase ID token or INTERNAL_SERVICE_KEY.
 
     Accepts optional base64-encoded audio input, transcribes it to text,
     runs the full chat pipeline via internal call to /chat, then
@@ -3154,6 +3421,16 @@ async def chat_voice(request: VoiceChatRequest):
       - "both": text + audio response (default)
     """
     try:
+        # Enforce user_id matches authenticated user (admin/service account exempt)
+        if not _is_admin(user):
+            if request.user_id and request.user_id != user.get("uid"):
+                raise HTTPException(
+                    status_code=403,
+                    detail="user_id in request does not match authenticated user",
+                )
+            if not request.user_id:
+                request.user_id = user.get("uid")
+
         voice_svc = get_voice_service()
 
         # ── Step 1: Resolve input text ──
@@ -4098,7 +4375,8 @@ async def list_escalations(
     """List escalation tickets with optional filters."""
     try:
         svc = get_escalation_service()
-        escalations = svc.list_escalations(status=status, priority=priority, limit=limit)
+        escalations = svc.list_escalations(
+            status=status, priority=priority, limit=limit)
         return JSONResponse(content={"status": "success", "escalations": escalations, "count": len(escalations)})
     except Exception as e:
         logger.error(f"List escalations error: {e}")
@@ -4273,7 +4551,8 @@ async def start_assessment(user_id: str, request: StartAssessmentRequest):
         svc = get_assessment_service()
 
         # Check for existing in-progress session
-        existing = svc.get_in_progress_session(user_id, request.assessment_type)
+        existing = svc.get_in_progress_session(
+            user_id, request.assessment_type)
         if existing:
             raise HTTPException(
                 status_code=409,
@@ -4319,7 +4598,8 @@ async def submit_assessment_answer(
         )
 
         if session is None:
-            raise HTTPException(status_code=404, detail="Assessment session not found")
+            raise HTTPException(
+                status_code=404, detail="Assessment session not found")
 
         is_complete = session.current_question_index >= session.total_questions
 
@@ -4347,7 +4627,8 @@ async def complete_assessment(user_id: str, session_id: str):
         session = svc.complete_assessment(user_id, session_id)
 
         if session is None:
-            raise HTTPException(status_code=404, detail="Assessment session not found")
+            raise HTTPException(
+                status_code=404, detail="Assessment session not found")
 
         if session.result is None:
             raise HTTPException(
@@ -4501,9 +4782,6 @@ async def get_selfcare_score(user_id: str):
 # ── Exception Handlers ───────────────────────────────────
 
 
-from fastapi.exceptions import RequestValidationError
-
-
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     """Return consistent JSON for Pydantic validation errors (422)."""
@@ -4534,7 +4812,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    logger.error(f"Unhandled exception on {request.url.path}: {exc}", exc_info=True)
+    logger.error(
+        f"Unhandled exception on {request.url.path}: {exc}", exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={

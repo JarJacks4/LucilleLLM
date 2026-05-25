@@ -25,33 +25,34 @@ if sys.stderr and hasattr(sys.stderr, "reconfigure"):
 
 class FirebaseService:
     def __init__(self):
-        """Initialize Firebase service with credentials"""
+        """Initialize Firebase service with credentials.
+
+        Init order (correct order — explicit credentials first, default fallback):
+          1. If FIREBASE_CREDENTIAL_PATH is set AND the file exists → use it
+             (this is the local development path)
+          2. Otherwise fall back to Application Default Credentials
+             (this is the production / GCP path — Cloud Run, GCE, etc. inject
+             credentials automatically via the metadata server)
+
+        The previous version had this backwards — it called initialize_app() with
+        no args first, which appears to "succeed" lazily even when no credentials
+        are available. The credential-file fallback was never reached.
+        """
         try:
-            # Check if Firebase app is already initialized
             if not firebase_admin._apps:
-                # Try default credentials first (more reliable for production)
-                try:
-                    print("🔄 Trying default credentials first...")
+                cred_path = os.getenv("FIREBASE_CREDENTIAL_PATH", "").strip()
+                if cred_path and os.path.exists(cred_path):
+                    print(f"🔑 Using service account file: {cred_path}")
+                    cred = credentials.Certificate(cred_path)
+                    firebase_admin.initialize_app(cred)
+                    print("✅ Firebase initialized with service account file")
+                else:
+                    if cred_path:
+                        print(f"⚠️ FIREBASE_CREDENTIAL_PATH set but file not found: {cred_path}")
+                    print("🔄 Falling back to Application Default Credentials")
                     firebase_admin.initialize_app()
                     print("✅ Firebase initialized with default credentials")
-                except Exception as e:
-                    print(f"⚠️ Default credentials failed: {e}")
-                    
-                    # Fallback to service account file
-                    cred_path = "escape-self-care-ai-firebase-key.json"
-                    if os.path.exists(cred_path):
-                        try:
-                            print(f"🔑 Trying service account file: {cred_path}")
-                            cred = credentials.Certificate(cred_path)
-                            firebase_admin.initialize_app(cred)
-                            print("✅ Firebase initialized with service account file")
-                        except Exception as e2:
-                            print(f"⚠️ Service account file also failed: {e2}")
-                            raise e2
-                    else:
-                        print("📁 Service account file not found")
-                        raise e
-            
+
             self.db = firestore.client()
             
             # Test the connection with a timeout

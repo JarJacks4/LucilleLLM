@@ -1,0 +1,355 @@
+rules_version = '2';
+
+// Firestore Security Rules — MERGED (FlutterFlow app + LucilleLLM backend)
+//
+// This project is shared by TWO distinct applications:
+//
+//   1. "Escape Self Care AI" — FlutterFlow mobile app (Android + iOS)
+//      Uses capital-case collections like `Users`, `SelfCareGoals`, `Music`,
+//      `TherapistDirectory`, `UserMoods`, and the `ff_*` prefixed collections
+//      (FlutterFlow convention).  The mobile app talks to Firestore DIRECTLY
+//      via the Firebase client SDK, so these rules DO gate its access.
+//
+//   2. LucilleLLM — Python backend (Cloud Run)
+//      Uses lowercase collections like `chat_sessions`, `user_profiles`,
+//      `bandit_state`, `safety_audit`, etc.  The backend uses the Firebase
+//      Admin SDK which BYPASSES these rules — so the LucilleLLM block below
+//      is defense-in-depth in case any future client-side code (or a
+//      compromised token) tries to access these collections directly.
+//
+// Collection name case-sensitivity is important:
+//   `Users`         (capital U) — FlutterFlow app
+//   `user_profiles` (lowercase) — LucilleLLM backend
+// These are two distinct collections in Firestore.
+//
+// ────────────────────────────────────────────────────────────────────────
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ═══════════════════════════════════════════════════════════════════
+    // SECTION 1 — FlutterFlow "Escape Self Care AI" mobile app
+    //
+    // Everything in this section is UNCHANGED from the existing production
+    // rules. Do not edit these without coordinating with the mobile team.
+    // ═══════════════════════════════════════════════════════════════════
+
+    match /fjkwpkal/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if false;
+      allow delete: if false;
+    }
+
+    match /qs5szvn8/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if false;
+      allow delete: if false;
+    }
+
+    match /w2v6hc6h/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if false;
+      allow delete: if false;
+    }
+
+    match /z4gwr2sg/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if false;
+      allow delete: if false;
+    }
+
+    match /Users/{parent}/Check-In/{document} {
+      allow create: if request.auth.uid == parent;
+      allow read: if request.auth.uid == parent;
+      allow write: if request.auth.uid == parent;
+      allow delete: if request.auth.uid == parent;
+    }
+
+    match /Users/{parent}/RitualSparkJournal/{document} {
+      allow create: if request.auth.uid == parent;
+      allow read: if request.auth.uid == parent;
+      allow write: if request.auth.uid == parent;
+      allow delete: if request.auth.uid == parent;
+    }
+
+    match /Users/{parent}/Subscriptions/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if true;
+      allow delete: if true;
+    }
+
+    match /{path=**}/Subscriptions/{document} {
+      allow read: if true;
+    }
+
+    match /Users/{parent}/Playlists/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if true;
+      allow delete: if true;
+    }
+
+    match /{path=**}/Playlists/{document} {
+      allow read: if true;
+    }
+
+    match /Users/{parent}/UserMoodsMain/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if true;
+      allow delete: if true;
+    }
+
+    match /{path=**}/UserMoodsMain/{document} {
+      allow read: if true;
+    }
+
+    // 🔐 USERS (FIXED LOGIN ISSUE)
+    match /Users/{document} {
+      allow create: if request.auth.uid == request.resource.data.uid;
+      allow read: if request.auth.uid == resource.data.uid;
+      allow write: if request.auth.uid == resource.data.uid;
+      allow delete: if false;
+    }
+
+    // 🧠 USER AGENT STATE
+    match /user_agent_state/{document} {
+      allow create: if request.auth.uid == request.resource.data.userId;
+      allow read: if request.auth.uid == resource.data.userId;
+      allow write: if request.auth.uid == resource.data.userId;
+      allow delete: if request.auth.uid == resource.data.userId;
+    }
+
+    // 🛍️ PRODUCTS & CATEGORIES (PUBLIC READ)
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // 📦 ORDERS
+    match /orders/{orderId} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if request.auth != null;
+    }
+
+    // 🧑‍🤝‍🧑 MARKETPLACE USERS
+    match /marketplace_users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+
+      match /{subcollection}/{docId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // ⚙️ CONFIG (ADMIN ONLY)
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.token.email == "admin@test.com";
+    }
+
+    // 😊 USER MOODS
+    match /UserMoods/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if true;
+      allow delete: if true;
+    }
+
+    // 🧘 THERAPIST DIRECTORY
+    match /TherapistDirectory/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if true;
+      allow delete: if true;
+    }
+
+    match /TherapistDirectory/{parent}/services/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if true;
+      allow delete: if true;
+    }
+
+    match /{path=**}/services/{document} {
+      allow read: if true;
+    }
+
+    match /TherapistDirectory/{parent}/location/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if true;
+      allow delete: if true;
+    }
+
+    match /{path=**}/location/{document} {
+      allow read: if true;
+    }
+
+    // 🎵 MUSIC
+    match /Music/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if true;
+      allow delete: if true;
+    }
+
+    // 🔔 PUSH NOTIFICATIONS
+    match /ff_user_push_notifications/{docId} {
+      allow create: if request.auth != null &&
+        request.resource.data.sender == /databases/$(database)/documents/Users/$(request.auth.uid);
+      allow read, update, delete: if false;
+    }
+
+    // 🎯 SELF CARE GOALS
+    match /SelfCareGoals/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if true;
+      allow delete: if true;
+    }
+
+    match /SelfCareGoals/{parent}/Progress/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if true;
+      allow delete: if true;
+    }
+
+    match /{path=**}/Progress/{document} {
+      allow read: if true;
+    }
+
+    match /SelfCareGoals/{parent}/Journal/{document} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
+      allow delete: if request.auth != null;
+    }
+
+    match /{path=**}/Journal/{document} {
+      allow read: if request.auth != null;
+    }
+
+    // 📜 HISTORY
+    match /History/{document} {
+      allow create: if true;
+      allow read: if true;
+      allow write: if true;
+      allow delete: if true;
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // SECTION 2 — LucilleLLM Python backend (NEW, lowercase collections)
+    //
+    // These collections are written by the Python backend via the Firebase
+    // Admin SDK (which BYPASSES rules). The rules below are defense-in-depth:
+    // if any future client-side code tries to access these directly, users
+    // can only see their own data, admins can see everything.
+    //
+    // Admin role = Firebase custom claim `admin: true` on the user's token.
+    // ═══════════════════════════════════════════════════════════════════
+
+    // Helpers for LucilleLLM rules (scoped via function declarations)
+    function _llIsSignedIn() {
+      return request.auth != null;
+    }
+    function _llIsUser(uid) {
+      return _llIsSignedIn() && request.auth.uid == uid;
+    }
+    function _llIsAdmin() {
+      return _llIsSignedIn() && request.auth.token.admin == true;
+    }
+
+    // User profiles (lowercase — distinct from `Users` above)
+    match /user_profiles/{userId} {
+      allow read, write: if _llIsUser(userId) || _llIsAdmin();
+
+      match /{subcollection}/{docId} {
+        allow read, write: if _llIsUser(userId) || _llIsAdmin();
+      }
+    }
+
+    // Chat sessions — each doc has a user_id field
+    match /chat_sessions/{sessionId} {
+      allow read: if _llIsAdmin() ||
+        (_llIsSignedIn() && resource.data.user_id == request.auth.uid);
+      allow create: if _llIsSignedIn() &&
+        request.resource.data.user_id == request.auth.uid;
+      allow update, delete: if _llIsAdmin() ||
+        (_llIsSignedIn() && resource.data.user_id == request.auth.uid);
+    }
+
+    // Per-user state collections (doc ID = user_id)
+    match /bandit_state/{userId} {
+      allow read, write: if _llIsUser(userId) || _llIsAdmin();
+    }
+
+    match /interaction_metrics/{userId} {
+      allow read, write: if _llIsUser(userId) || _llIsAdmin();
+    }
+
+    match /consent_records/{userId} {
+      allow read, write: if _llIsUser(userId) || _llIsAdmin();
+    }
+
+    // Safety audit (per-user; mostly admin-managed)
+    match /safety_audit/{userId} {
+      allow read: if _llIsUser(userId) || _llIsAdmin();
+      allow write: if _llIsAdmin();
+
+      match /events/{eventId} {
+        allow read: if _llIsUser(userId) || _llIsAdmin();
+        allow write: if _llIsAdmin();
+      }
+      match /reviews/{reviewId} {
+        allow read: if _llIsUser(userId) || _llIsAdmin();
+        allow write: if _llIsAdmin();
+      }
+    }
+
+    // Health metrics from wearables (per-user)
+    match /health_metrics/{userId} {
+      allow read, write: if _llIsUser(userId) || _llIsAdmin();
+      match /daily/{docId} {
+        allow read, write: if _llIsUser(userId) || _llIsAdmin();
+      }
+    }
+
+    // Feedback collections (per-user)
+    match /feedback/{userId} {
+      allow read, write: if _llIsUser(userId) || _llIsAdmin();
+      match /response_feedback/{docId} {
+        allow read, write: if _llIsUser(userId) || _llIsAdmin();
+      }
+      match /exercise_outcomes/{docId} {
+        allow read, write: if _llIsUser(userId) || _llIsAdmin();
+      }
+    }
+
+    // Admin-only LucilleLLM collections (clients should never touch these)
+    match /escalation_queue/{docId} {
+      allow read, write: if _llIsAdmin();
+    }
+    match /training_examples/{docId} {
+      allow read, write: if _llIsAdmin();
+    }
+    match /model_performance/{docId} {
+      allow read, write: if _llIsAdmin();
+    }
+
+    // NOTE: No catch-all default-deny rule at the end.
+    // Firestore denies by default when no rule matches, so a catch-all
+    // would be redundant — and adding one changes nothing functionally
+    // but could confuse future reviewers who assume it's doing something.
+  }
+}
