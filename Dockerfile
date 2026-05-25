@@ -21,21 +21,23 @@ RUN apt-get update && apt-get install -y \
 # Copy the application files to the container
 COPY . /app
 
-# NOTE: Do NOT bundle Firebase service account JSON in the container image.
-# In production (Cloud Run), Firebase Admin SDK automatically uses Application
-# Default Credentials from the GCP metadata server — no JSON file needed.
-# The JSON file is only for local development.
+# Ensure Firebase service account file is properly set
+RUN if [ -f "escape-self-care-ai-firebase-key.json" ]; then \
+        echo "✅ Firebase service account file found"; \
+    else \
+        echo "⚠️ Warning: Firebase service account file not found"; \
+    fi
 
-# Upgrade pip and install all dependencies
+# Upgrade pip and install dependencies efficiently
 RUN pip install --no-cache-dir --upgrade pip --root-user-action=ignore \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir --no-deps -r requirements.txt \
+    && pip install --no-cache-dir --upgrade --use-deprecated=legacy-resolver -r requirements.txt
 
-# Verify no dependency conflicts
+# Install missing sentence-transformers package separately
+RUN pip install --no-cache-dir sentence-transformers
+
+# Verify that there are no dependency issues
 RUN pip check || echo "Warning: Some dependencies may have conflicts."
-
-# Non-root user (CIS benchmark for containers)
-RUN useradd -m -u 1000 lucille && chown -R lucille:lucille /app
-USER lucille
 
 # Expose port 8080 for Cloud Run
 EXPOSE 8080

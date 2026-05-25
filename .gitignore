@@ -1,83 +1,32 @@
-# ═══════════════════════════════════════════════════════
-# SECRETS — NEVER commit these
-# ═══════════════════════════════════════════════════════
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-*.p12
-*.pfx
-
-# Firebase / GCP service account keys
-serviceAccount*.json
-firebase-*.json
-escape-*-firebase-*.json
-*-credentials.json
-*-service-account.json
-
-# ═══════════════════════════════════════════════════════
 # Python
-# ═══════════════════════════════════════════════════════
 __pycache__/
 *.py[cod]
-*$py.class
 *.egg
 *.egg-info/
 dist/
 build/
-*.whl
-*.so
+.env
+*.sqlite3
+
+# Secrets and API Keys
+*.json
+.env.backup
+escape-*-firebase-*.json
+
+# VS Code
+.vscode/
+
+# OS-specific
+.DS_Store
+Thumbs.db
 
 # Virtual Environments
 venv/
 ENV/
 env/
-.venv/
 
-# pytest
-.pytest_cache/
-htmlcov/
-.coverage
-coverage.xml
-test_output/
-*.test.log
-
-# mypy / type checking
-.mypy_cache/
-
-# ═══════════════════════════════════════════════════════
-# IDE / Editor
-# ═══════════════════════════════════════════════════════
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# ═══════════════════════════════════════════════════════
-# OS-specific
-# ═══════════════════════════════════════════════════════
-.DS_Store
-Thumbs.db
-Desktop.ini
-
-# ═══════════════════════════════════════════════════════
-# Large binary data (optional — uncomment if NOT needed in repo)
-# ═══════════════════════════════════════════════════════
-# embeddings_data.pkl
-# texts.pkl
-# faiss_vecdb/
-
-# ═══════════════════════════════════════════════════════
-# Node / Frontend (if applicable)
-# ═══════════════════════════════════════════════════════
+# Node/Vite (if you're also using Vite for frontend)
 node_modules/
+dist/
 *.log
-
-# ═══════════════════════════════════════════════════════
-# Misc
-# ═══════════════════════════════════════════════════════
-*.sqlite3
-*.db
-tmp/
+test*

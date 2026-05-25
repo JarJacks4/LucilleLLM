@@ -3,56 +3,38 @@ from firebase_admin import credentials, firestore
 from typing import List, Dict, Optional
 from datetime import datetime
 import json
-import logging
 import os
-import sys
 from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, SystemMessage
-
-logger = logging.getLogger(__name__)
-
-# Fix emoji encoding crash on Windows (cp1252 can't encode emoji)
-# Reconfigure stdout/stderr to replace unencodable characters
-if sys.stdout and hasattr(sys.stdout, "reconfigure"):
-    try:
-        sys.stdout.reconfigure(errors="replace")
-    except Exception:
-        pass
-if sys.stderr and hasattr(sys.stderr, "reconfigure"):
-    try:
-        sys.stderr.reconfigure(errors="replace")
-    except Exception:
-        pass
 
 class FirebaseService:
     def __init__(self):
-        """Initialize Firebase service with credentials.
-
-        Init order (correct order — explicit credentials first, default fallback):
-          1. If FIREBASE_CREDENTIAL_PATH is set AND the file exists → use it
-             (this is the local development path)
-          2. Otherwise fall back to Application Default Credentials
-             (this is the production / GCP path — Cloud Run, GCE, etc. inject
-             credentials automatically via the metadata server)
-
-        The previous version had this backwards — it called initialize_app() with
-        no args first, which appears to "succeed" lazily even when no credentials
-        are available. The credential-file fallback was never reached.
-        """
+        """Initialize Firebase service with credentials"""
         try:
+            # Check if Firebase app is already initialized
             if not firebase_admin._apps:
-                cred_path = os.getenv("FIREBASE_CREDENTIAL_PATH", "").strip()
-                if cred_path and os.path.exists(cred_path):
-                    print(f"🔑 Using service account file: {cred_path}")
-                    cred = credentials.Certificate(cred_path)
-                    firebase_admin.initialize_app(cred)
-                    print("✅ Firebase initialized with service account file")
-                else:
-                    if cred_path:
-                        print(f"⚠️ FIREBASE_CREDENTIAL_PATH set but file not found: {cred_path}")
-                    print("🔄 Falling back to Application Default Credentials")
+                # Try default credentials first (more reliable for production)
+                try:
+                    print("🔄 Trying default credentials first...")
                     firebase_admin.initialize_app()
                     print("✅ Firebase initialized with default credentials")
-
+                except Exception as e:
+                    print(f"⚠️ Default credentials failed: {e}")
+                    
+                    # Fallback to service account file
+                    cred_path = "escape-self-care-ai-firebase-key.json"
+                    if os.path.exists(cred_path):
+                        try:
+                            print(f"🔑 Trying service account file: {cred_path}")
+                            cred = credentials.Certificate(cred_path)
+                            firebase_admin.initialize_app(cred)
+                            print("✅ Firebase initialized with service account file")
+                        except Exception as e2:
+                            print(f"⚠️ Service account file also failed: {e2}")
+                            raise e2
+                    else:
+                        print("📁 Service account file not found")
+                        raise e
+            
             self.db = firestore.client()
             
             # Test the connection with a timeout
@@ -342,62 +324,6 @@ class FirebaseService:
             
         except Exception as e:
             print(f"❌ Failed to list sessions: {e}")
-            return []
-
-    def link_session_to_user(self, session_id: str, user_id: str) -> bool:
-        """Add user_id field to an existing chat session document."""
-        if self.db is None:
-            print("⚠️ Firebase not available, cannot link session")
-            return False
-
-        try:
-            doc_ref = self.db.collection('chat_sessions').document(session_id)
-            doc_ref.update({
-                'user_id': user_id,
-                'updated_at': firestore.SERVER_TIMESTAMP
-            })
-            print(f"🔗 Linked session {session_id} to user {user_id}")
-            return True
-        except Exception as e:
-            print(f"❌ Failed to link session {session_id} to user {user_id}: {e}")
-            return False
-
-    def get_user_sessions(self, user_id: str, limit: int = 50) -> List[Dict]:
-        """List all chat sessions belonging to a user_id."""
-        if self.db is None:
-            print("⚠️ Firebase not available, cannot list user sessions")
-            return []
-
-        try:
-            sessions = []
-            docs = (self.db.collection('chat_sessions')
-                    .where('user_id', '==', user_id)
-                    .order_by('updated_at', direction=firestore.Query.DESCENDING)
-                    .limit(limit)
-                    .stream())
-
-            for doc in docs:
-                data = doc.to_dict()
-                created_at = data.get('created_at')
-                updated_at = data.get('updated_at')
-
-                if created_at and hasattr(created_at, 'isoformat'):
-                    created_at = created_at.isoformat()
-                if updated_at and hasattr(updated_at, 'isoformat'):
-                    updated_at = updated_at.isoformat()
-
-                sessions.append({
-                    'session_id': data.get('session_id'),
-                    'message_count': data.get('message_count', 0),
-                    'created_at': created_at,
-                    'updated_at': updated_at,
-                    'has_summary': bool(data.get('summary'))
-                })
-
-            print(f"✅ Retrieved {len(sessions)} sessions for user {user_id}")
-            return sessions
-        except Exception as e:
-            print(f"❌ Failed to list sessions for user {user_id}: {e}")
             return []
 
 # Global Firebase service instance
