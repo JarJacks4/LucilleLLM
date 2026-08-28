@@ -3,6 +3,7 @@ fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 httpx>=0.27.0
 pydantic>=2.5.0
+python-multipart>=0.0.9  # required for image upload (mood image analysis)
 
 # OpenAI and AI/ML libraries
 openai>=1.40.2
@@ -20,7 +21,23 @@ numpy>=1.24.0
 firebase_admin>=6.2.0
 google-cloud-secret-manager>=2.20.2
 
+# Monitoring
+psutil>=5.9.0
+
+# Voice I/O (STT / TTS)
+SpeechRecognition>=3.10.0
+edge-tts>=6.1.0
+
+# Retry logic
+tenacity>=8.2.0
+
 # Utilities
 python-dotenv>=1.0.1
 requests>=2.31.0
 jinja2>=3.1.0
+
+# Testing (dev only - not needed in production Docker image)
+# pytest>=7.0
+# pytest-asyncio>=0.21
+# httpx>=0.27.0
+sentence-transformers>=2.2.0
