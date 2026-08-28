@@ -1,32 +1,90 @@
+# ═══════════════════════════════════════════════════════
+# SECRETS — NEVER commit these
+# ═══════════════════════════════════════════════════════
+.env
+.env.*
+!.env.example
+.env.backup
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Scratch files that have historically held credentials
+key.txt
+keys.txt
+secrets.txt
+
+# Firebase / GCP service account keys
+serviceAccount*.json
+firebase-*.json
+*-firebase-adminsdk-*.json
+escape-*-firebase-*.json
+*-credentials.json
+*-service-account.json
+
+# ═══════════════════════════════════════════════════════
 # Python
+# ═══════════════════════════════════════════════════════
 __pycache__/
 *.py[cod]
+*$py.class
 *.egg
 *.egg-info/
 dist/
 build/
-.env
-*.sqlite3
-
-# Secrets and API Keys
-*.json
-.env.backup
-escape-*-firebase-*.json
-
-# VS Code
-.vscode/
-
-# OS-specific
-.DS_Store
-Thumbs.db
+*.whl
+*.so
 
 # Virtual Environments
 venv/
 ENV/
 env/
+.venv/
 
-# Node/Vite (if you're also using Vite for frontend)
+# pytest
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+test_output/
+*.test.log
+
+# mypy / type checking
+.mypy_cache/
+
+# ═══════════════════════════════════════════════════════
+# IDE / Editor
+# ═══════════════════════════════════════════════════════
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ═══════════════════════════════════════════════════════
+# OS-specific
+# ═══════════════════════════════════════════════════════
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ═══════════════════════════════════════════════════════
+# Large binary data (optional — uncomment if NOT needed in repo)
+# ═══════════════════════════════════════════════════════
+# embeddings_data.pkl
+# texts.pkl
+# faiss_vecdb/
+
+# ═══════════════════════════════════════════════════════
+# Node / Frontend (if applicable)
+# ═══════════════════════════════════════════════════════
 node_modules/
-dist/
 *.log
-test*
+
+# ═══════════════════════════════════════════════════════
+# Misc
+# ═══════════════════════════════════════════════════════
+*.sqlite3
+*.db
+tmp/

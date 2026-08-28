@@ -66,8 +66,14 @@ def _verify_firebase_token(token: str) -> Optional[dict]:
             raise _AuthError(401, "Invalid authentication token.")
         if exc_name == "UserDisabledError":
             raise _AuthError(403, "Your account has been disabled.")
-        # Unknown failure — log full details server-side, return generic message
-        logger.debug(f"Firebase token verification failed: {exc_name}: {e}")
+        # Unknown failure — log full details server-side, return generic message.
+        # Logged at WARNING, not DEBUG: every unmapped failure here falls through
+        # to the API-key check and ends as a generic 401, so this line is the only
+        # record of *why*. Common causes: the default Firebase app was never
+        # initialized (ValueError), the token was minted by a different Firebase
+        # project (wrong audience), clock skew ("Token used too early"), or the
+        # service account lacking permission for the check_revoked lookup.
+        logger.warning(f"Firebase token verification failed: {exc_name}: {e}")
         return None
 
 

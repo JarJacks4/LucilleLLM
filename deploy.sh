@@ -45,4 +45,7 @@ gcloud builds submit --config cloudbuild.yaml
 
 echo "✅ Deployment complete!"
 echo "🌐 Your app will be available at:"
-gcloud run services describe lucillellm --region=us-central1 --format="value(status.url)"
+# Service name and region must match what cloudbuild.yaml actually deploys
+# (lucillellm2 / us-east4) — this previously queried lucillellm / us-central1
+# and always failed with NOT_FOUND after an otherwise successful deploy.
+gcloud run services describe lucillellm2 --region=us-east4 --format="value(status.url)"
