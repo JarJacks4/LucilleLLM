@@ -3,9 +3,15 @@
 .env.*
 *.pem
 *.key
+# `*.key` does NOT match `key.txt` — that gap shipped a live OpenAI key
+# into every built image via `COPY . /app`. Match it explicitly.
+key.txt
+keys.txt
+secrets.txt
 *firebase*.json
 *credentials*.json
 *service-account*.json
+*-firebase-adminsdk-*.json
 
 # Development
 venv/

@@ -45,4 +45,7 @@ gcloud builds submit --config cloudbuild.yaml
 
 echo "✅ Deployment complete!"
 echo "🌐 Your app will be available at:"
-gcloud run services describe lucillellm --region=us-central1 --format="value(status.url)"
+# Must match the RUNNING production service: lucille / us-central1.
+# Neither the original (lucillellm / us-central1) nor cloudbuild's old target
+# (lucillellm2 / us-east4) exists in this project — both returned NOT_FOUND.
+gcloud run services describe lucille --region=us-central1 --format="value(status.url)"
