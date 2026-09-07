@@ -63,7 +63,13 @@ def _verify_firebase_token(token: str) -> Optional[dict]:
         if exc_name == "ExpiredIdTokenError":
             raise _AuthError(401, "Token has expired. Please refresh your session.")
         if exc_name == "InvalidIdTokenError":
-            raise _AuthError(401, "Invalid authentication token.")
+            # firebase_admin raises this both for a malformed/non-JWT string
+            # (e.g. an INTERNAL_SERVICE_KEY) and for a validly-shaped but
+            # invalid JWT. Return None so the caller falls through to the
+            # API-key check; if that also fails, get_current_user's own
+            # fallback raises the identical "Invalid authentication token."
+            # 401 anyway, so no message is lost for genuinely bad JWTs.
+            return None
         if exc_name == "UserDisabledError":
             raise _AuthError(403, "Your account has been disabled.")
         # Unknown failure — log full details server-side, return generic message.
