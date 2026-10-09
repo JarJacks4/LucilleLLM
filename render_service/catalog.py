@@ -3,7 +3,7 @@ Pre-render the Soundscapes catalog (escape_api/data/soundscape_catalog.json) to 
 
     soundscapes/{category}/{trackId}/intro.m4a, body_1..4.m4a, outro.m4a, preview.m4a
 
-    AUDIO_BUCKET=escape-self-care-ai.appspot.com python -m render_service.catalog            # all tracks
+    AUDIO_BUCKET=escape-self-care-505618-escape-media python -m render_service.catalog            # all tracks
     python -m render_service.catalog --only jazz_01 --local out/                              # one, to disk
     python -m render_service.catalog --free-only --preview-only                               # just previews
 

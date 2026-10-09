@@ -8,7 +8,7 @@ POST /v1/render     X-Api-Key: $RENDER_API_KEY
 POST /v1/render/sync   same body, renders and returns the result in the response (tests, catalog jobs).
 GET  /health
 
-Env: RENDER_API_KEY, LUCILLE_RENDER_CALLBACK_SECRET, AUDIO_BUCKET (e.g. escape-self-care-ai.appspot.com),
+Env: RENDER_API_KEY, LUCILLE_RENDER_CALLBACK_SECRET, AUDIO_BUCKET (e.g. escape-self-care-505618-escape-media),
      AUDIO_PUBLIC_BASE (default https://storage.googleapis.com/<bucket>), RENDER_PREFIX (default audio/compose),
      RENDER_WORKERS (default 2).
 """

@@ -10,7 +10,8 @@ if ! command -v gcloud &> /dev/null; then
 fi
 
 # Check if project is set
-PROJECT_ID=$(gcloud config get-value project)
+PROJECT_ID="escape-self-care-505618"   # Escape Firebase project (app sign-in + Firestore)
+gcloud config set project "$PROJECT_ID" >/dev/null
 if [ -z "$PROJECT_ID" ]; then
     echo "❌ No Google Cloud project set. Please run:"
     echo "   gcloud config set project YOUR_PROJECT_ID"
@@ -41,7 +42,8 @@ fi
 
 # Deploy with Cloud Build
 echo "🏗️  Building and deploying..."
-gcloud builds submit --config cloudbuild.yaml
+gcloud builds submit --config cloudbuild-render.yaml --project "$PROJECT_ID"
+gcloud builds submit --config cloudbuild.yaml --project "$PROJECT_ID"
 
 echo "✅ Deployment complete!"
 echo "🌐 Your app will be available at:"

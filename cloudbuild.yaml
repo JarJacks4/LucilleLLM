@@ -1,4 +1,9 @@
 steps:
+  # Deploys only to the Escape Firebase project (app sign-in + Firestore live there).
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args: ['-c', '[ "$PROJECT_ID" = "escape-self-care-505618" ] || { echo "Refusing to deploy to $PROJECT_ID (expected escape-self-care-505618)"; exit 1; }']
+    id: 'project-guard'
   # Run tests before building. Tests MUST pass — failures block the deploy.
   - name: 'python:3.12-slim'
     entrypoint: 'bash'

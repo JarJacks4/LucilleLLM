@@ -12,6 +12,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+env:
+  GCP_PROJECT_ID: escape-self-care-505618   # Escape Firebase project (app sign-in + Firestore); do not change
+  GCP_REGION: us-central1
+
 permissions:
   contents: read
   id-token: write   # required for keyless auth to Google Cloud
@@ -46,11 +50,11 @@ jobs:
           service_account: ${{ secrets.GCP_DEPLOY_SA }}
       - uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
       - name: Deploy the render service (cloudbuild-render.yaml)
-        run: gcloud builds submit --config cloudbuild-render.yaml --project "${{ secrets.GCP_PROJECT_ID }}" .
+        run: gcloud builds submit --config cloudbuild-render.yaml --project "${{ env.GCP_PROJECT_ID }}" .
       - name: Build, test and deploy the API (cloudbuild.yaml)
-        run: gcloud builds submit --config cloudbuild.yaml --project "${{ secrets.GCP_PROJECT_ID }}" .
+        run: gcloud builds submit --config cloudbuild.yaml --project "${{ env.GCP_PROJECT_ID }}" .
       - name: Smoke test
         run: |
           URL=$(gcloud run services describe lucille --region us-central1 --format='value(status.url)')

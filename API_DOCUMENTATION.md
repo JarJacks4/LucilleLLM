@@ -1,6 +1,6 @@
 # LucilleLLM API Documentation
 
-**Base URL:** `https://lucillellm2-286076426888.us-east4.run.app`
+**Base URL:** `https://lucille-861854898360.us-central1.run.app`
 
 Hey team! 👋 Here's a quick guide to our chat API endpoints. Let me know if you have questions!
 
@@ -24,7 +24,7 @@ Hey team! 👋 Here's a quick guide to our chat API endpoints. Let me know if yo
 Just checks if everything is working.
 
 ```bash
-curl https://lucillellm2-286076426888.us-east4.run.app/health
+curl https://lucille-861854898360.us-central1.run.app/health
 ```
 
 **Response:**
@@ -45,7 +45,7 @@ curl https://lucillellm2-286076426888.us-east4.run.app/health
 Creates a fresh chat session. Use this when a user opens the app for the first time.
 
 ```bash
-curl https://lucillellm2-286076426888.us-east4.run.app/
+curl https://lucille-861854898360.us-central1.run.app/
 ```
 
 **Response:**
@@ -85,7 +85,7 @@ Content-Type: application/json
 ### Test in Postman
 
 1. Set method to **POST**
-2. URL: `https://lucillellm2-286076426888.us-east4.run.app/chat`
+2. URL: `https://lucille-861854898360.us-central1.run.app/chat`
 3. Go to **Body** → **raw** → **JSON**
 4. Paste this:
 ```json
@@ -165,7 +165,7 @@ Content-Type: application/json
 ### Test in Postman
 
 1. Set method to **POST**
-2. URL: `https://lucillellm2-286076426888.us-east4.run.app/chat/stream`
+2. URL: `https://lucille-861854898360.us-central1.run.app/chat/stream`
 3. Go to **Body** → **raw** → **JSON**
 4. Paste:
 ```json
