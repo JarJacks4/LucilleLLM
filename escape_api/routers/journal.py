@@ -129,7 +129,7 @@ async def home(c: Caller = Depends(caller), period: Literal["week", "month", "ye
     if last:
         age_h = (core.now_utc() - core.parse_iso(last["createdAt"])).total_seconds() / 3600
         if age_h <= 12:
-            fresh = {**last, "ageHours": round(age_h, 1)}
+            fresh = {**last, "ageHours": round(age_h, 1), "orb": core.orb_assets(last.get("tone", "mixed"), core.is_night(c.tz))}
     weekly = await journal.weekly_reflection(c.repo, c.uid, c.tz, allow_llm=False, generate=False)
     return {
         "greetingName": st.get("displayName"),

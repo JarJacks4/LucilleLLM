@@ -41,7 +41,8 @@ def me(c: Caller = Depends(caller)):
 def update_me(body: PrefsIn, c: Caller = Depends(caller)):
     upd = {}
     if body.timezone:
-        upd["timezone"] = body.timezone if core.safe_tz(body.timezone).key == body.timezone else "UTC"
+        z = core.safe_tz(body.timezone)
+        upd["timezone"] = body.timezone if (getattr(z, "key", None) == body.timezone or z.utcoffset(None) is not None) else "UTC"
     for k in ("displayName", "wakeTime"):
         if getattr(body, k) is not None:
             upd[k] = getattr(body, k)

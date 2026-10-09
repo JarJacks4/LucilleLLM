@@ -329,3 +329,11 @@ def test_letters_due_job_delivers(client):
     items = client.get("/v1/journal/letters", headers=H).json()["items"]
     assert items[0]["sealed"] is False and items[0]["body"] == "hi"
     assert any(p.startswith("ff_user_push_notifications/") for p in client.repo._docs)
+
+
+def test_timezone_offset_header_accepted(client):
+    client.put("/v1/privacy/consents", json={"flags": {"wellbeing_data": True}}, headers={"X-Test-Uid": "u3"})
+    r = client.post("/v1/mood/checkins", json={"word": "Calm"}, headers={"X-Test-Uid": "u3", "X-Timezone": "-04:00"})
+    assert r.status_code == 201 and r.json()["checkin"]["localDay"]
+    me = client.patch("/v1/me", json={"timezone": "+05:30"}, headers={"X-Test-Uid": "u3"}).json()
+    assert me["timezone"] == "+05:30"

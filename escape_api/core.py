@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import os
 import uuid
 from datetime import date, datetime, timedelta, timezone
@@ -56,9 +57,20 @@ def parse_iso(s: str) -> datetime:
     return datetime.fromisoformat(s.replace("Z", "+00:00"))
 
 
-def safe_tz(tz: Optional[str]) -> ZoneInfo:
+_OFFSET = re.compile(r"^(?:UTC|GMT)?\s*([+-])(\d{1,2})(?::?(\d{2}))?$")
+
+
+def safe_tz(tz: Optional[str]):
+    """IANA name ('America/New_York') or a UTC offset ('+05:30', 'UTC-04:00'). Falls back to UTC."""
+    if not tz:
+        return ZoneInfo("UTC")
+    m = _OFFSET.match(tz.strip())
+    if m:
+        mins = int(m.group(2)) * 60 + int(m.group(3) or 0)
+        if mins <= 14 * 60:
+            return timezone(timedelta(minutes=mins if m.group(1) == "+" else -mins))
     try:
-        return ZoneInfo(tz) if tz else ZoneInfo("UTC")
+        return ZoneInfo(tz)
     except Exception:
         return ZoneInfo("UTC")
 
