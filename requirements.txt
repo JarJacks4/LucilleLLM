@@ -16,6 +16,7 @@ tiktoken>=0.7.0
 # Vector database and scientific computing
 faiss-cpu>=1.7.0
 numpy>=1.24.0
+scipy>=1.11  # render_service tests
 
 # Google Cloud and Firebase
 firebase_admin>=6.2.0

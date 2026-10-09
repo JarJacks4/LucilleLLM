@@ -206,6 +206,7 @@ async def _send_render(uid: str, comp: dict) -> None:
         "output": {"codec": "aac-lc", "container": "m4a", "sampleRate": 48000, "channels": 2, "bitrateKbps": 160,
                    "loudnessLufs": comp["recipe"]["loudnessLufs"], "truePeakDbtp": -1},
         "callbackUrl": f"{s.public_base_url.rstrip('/')}/v1/soundscapes/render-callback/{uid}/{comp['id']}",
+        "energy": comp["moodField"]["energy"],
     }
     try:
         async with httpx.AsyncClient(timeout=15) as cl:
@@ -244,7 +245,7 @@ async def compose(body: ComposeIn, bg: BackgroundTasks, c: Caller = Depends(call
     c.repo.set(user_path(c.uid, "compositions", comp["id"]), comp)
     if cfg().render_url:
         bg.add_task(_send_render, c.uid, comp)
-    return {"compositionId": comp["id"], "status": comp["status"], "etaSec": 60, "composition": comp,
+    return {"compositionId": comp["id"], "status": comp["status"], "etaSec": 120, "composition": comp,
             "renderConfigured": bool(cfg().render_url), "safety": safety if safety["crisis"] else None}
 
 

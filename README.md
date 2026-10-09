@@ -123,6 +123,13 @@ curl http://localhost:8080/assessments/demo-user/wellness-score
 
 ---
 
+## Escape v1 API
+
+The Escape app's Journal, Mood Scan / Mood Stats, Soundscapes AI, Self-Care Score + plans and privacy controls run on
+`/v1` endpoints in `escape_api/` (67 operations, Firebase-token auth, consent-gated, cost-capped). Legacy routes are unchanged.
+See [API_REFERENCE.md](API_REFERENCE.md) sections 20–27, [docs/API_V1.md](docs/API_V1.md) and
+[docs/escape_v1_openapi.json](docs/escape_v1_openapi.json) (import into FlutterFlow).
+
 ## Core Features
 
 ### Therapy Engine

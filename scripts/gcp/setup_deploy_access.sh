@@ -5,6 +5,8 @@
 #   bash scripts/gcp/setup_deploy_access.sh <PROJECT_ID>
 #
 # It creates:
+#   * secrets 'lucille-render-api-key' + 'lucille-render-callback-secret' (API <-> render service)
+#   * public bucket <PROJECT_ID>-escape-media for orbs, loops and audio
 #   * service account  github-deployer@<PROJECT_ID>.iam.gserviceaccount.com  (least privilege)
 #   * Workload Identity pool 'github' + provider 'github-oidc', locked to repo JarJacks4/LucilleLLM
 #   * secret 'internal-service-key' (server-to-server auth for scheduled jobs)
@@ -71,6 +73,20 @@ gcloud secrets describe openai-api-key >/dev/null 2>&1 || echo "!! secret 'opena
 if ! gcloud secrets describe internal-service-key >/dev/null 2>&1; then
   head -c 32 /dev/urandom | base64 | tr -d '\n=/+' | gcloud secrets create internal-service-key --data-file=- --replication-policy=automatic
 fi
+
+for S in lucille-render-api-key lucille-render-callback-secret; do
+  gcloud secrets describe "$S" >/dev/null 2>&1 || \
+    head -c 32 /dev/urandom | base64 | tr -d '\n=/+' | gcloud secrets create "$S" --data-file=- --replication-policy=automatic
+done
+
+echo "== Public media bucket for orbs, loops and soundscape audio (kept apart from the Firebase bucket)"
+MEDIA="gs://${PROJECT_ID}-escape-media"
+gcloud storage buckets describe "$MEDIA" >/dev/null 2>&1 || \
+  gcloud storage buckets create "$MEDIA" --location="$REGION" --uniform-bucket-level-access
+gcloud storage buckets add-iam-policy-binding "$MEDIA" --member=allUsers --role=roles/storage.objectViewer >/dev/null
+gcloud storage buckets add-iam-policy-binding "$MEDIA" \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" --role=roles/storage.objectAdmin >/dev/null
+echo "   media base URL: https://storage.googleapis.com/${PROJECT_ID}-escape-media"
 
 echo "== Cloud Scheduler: hourly letters-to-future-self delivery"
 URL="$(gcloud run services describe "$SERVICE" --region="$REGION" --format='value(status.url)' 2>/dev/null || true)"

@@ -1,0 +1,28 @@
+# Lucille render service. Deployed by .github/workflows/deploy-cloud-run.yml before the API.
+# CPU is always allocated (--no-cpu-throttling) because renders run after the 202 response.
+# Concurrency 2 = at most 2 renders per instance; max 5 instances caps spend.
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-f', 'render_service/Dockerfile',
+           '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/lucille-repo/lucille-render:$BUILD_ID',
+           '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/lucille-repo/lucille-render:latest', '.']
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', 'us-central1-docker.pkg.dev/$PROJECT_ID/lucille-repo/lucille-render']
+  - name: 'gcr.io/cloud-builders/gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'lucille-render'
+      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/lucille-repo/lucille-render:$BUILD_ID'
+      - '--region=us-central1'
+      - '--allow-unauthenticated'          # protected by X-Api-Key
+      - '--port=8080'
+      - '--memory=2Gi'
+      - '--cpu=2'
+      - '--no-cpu-throttling'
+      - '--concurrency=2'
+      - '--min-instances=0'
+      - '--max-instances=5'
+      - '--timeout=900'
+      - '--set-env-vars=AUDIO_BUCKET=$PROJECT_ID-escape-media,RENDER_PREFIX=audio/compose,RENDER_WORKERS=2'
+      - '--set-secrets=RENDER_API_KEY=lucille-render-api-key:latest,LUCILLE_RENDER_CALLBACK_SECRET=lucille-render-callback-secret:latest'

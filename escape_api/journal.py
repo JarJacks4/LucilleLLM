@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import random
 import re
 from collections import Counter
@@ -10,6 +11,8 @@ from typing import Any, Dict, List, Optional
 
 from escape_api import core, llm
 from escape_api.repo import Repo, user_path
+
+logger = logging.getLogger(__name__)
 
 MODES = ("free", "guided", "gratitude", "ritual")
 
@@ -82,26 +85,89 @@ def _fallback_reflection(e: Dict[str, Any], word: str, family: str) -> Dict[str,
     return {"reflection": refl, "reframe": reframe}
 
 
+NEGATIVE_SELF_TALK = re.compile(
+    r"\b(i'?m (so )?(stupid|useless|a failure|worthless|not good enough|behind)|i always (mess|screw)|"
+    r"i never (do|get) anything right|nothing ever works|i can'?t do anything|everyone (hates|is better))\b", re.I)
+
+MODE_GUIDE = {
+    "free": "Mirror the main thing they wrote about and how it seems to sit with them.",
+    "guided": "Respond to how they answered the prompt; notice one specific detail in their answer.",
+    "gratitude": "Savour what they listed: name what these good things say about what matters to them. No reframe.",
+    "ritual": "Affirm the intention and make it feel doable tonight (one concrete, tiny next step). No reframe.",
+}
+
+BANNED = re.compile(
+    r"(diagnos|disorder|\bdepression\b|\bptsd\b|\badhd\b|bipolar|medicat|prescri|\bcure\b|treatment|"
+    r"as an ai language model|i am (a )?human|i'?m (a )?human|always be here for you|only need me|"
+    r"you should|everything happens for a reason|i understand exactly)", re.I)
+
+
+def wants_reframe(e: Dict[str, Any], family: str) -> bool:
+    """Code decides, not the model: unpleasant mood or negative self-talk, and only in free/guided."""
+    if e.get("mode") not in ("free", "guided"):
+        return False
+    return family in ("restless", "heavy") or bool(NEGATIVE_SELF_TALK.search(entry_text(e)))
+
+
+def validate_reflection(out: Dict[str, Any], need_reframe: bool) -> Optional[str]:
+    """Return a reason string if the model output must be replaced by the fallback."""
+    text = str(out.get("reflection") or "")
+    words = len(text.split())
+    if words < 8 or words > 95:
+        return "length"
+    if BANNED.search(text) or (out.get("reframe") and BANNED.search(str(out["reframe"]))):
+        return "banned_phrase"
+    if text.count("?") > 1:
+        return "too_many_questions"
+    if need_reframe and out.get("reframe") and len(str(out["reframe"]).split()) > 60:
+        return "reframe_length"
+    return None
+
+
 async def reflect(e: Dict[str, Any], word: str, family: str, allow_llm: bool) -> Dict[str, Any]:
     base = _fallback_reflection(e, word, family)
+    need = wants_reframe(e, family)
+    if not need:
+        base["reframe"] = None
     themes = e.get("themes") or extract_themes(entry_text(e))
     base.update({"themes": themes, "energyCenter": ENERGY_CENTER_FOR_THEME.get(themes[0]) if themes else None,
                  "soundscapeCategory": _category_for(family)})
     if not allow_llm:
         return dict(base, _source="fallback")
-    task = ("Reflect on this journal entry in 2-3 sentences (max 70 words), in second person. "
-            "If the mood is unpleasant, add 'reframe': one gentler way to hold the main thought, as a short "
-            "suggestion ending in a question; otherwise reframe is null. Also return 'themes' (max 3 single "
-            "words) and 'soundscapeCategory' as one of: music_meditations, vaporwave, jazz, nature, "
-            "binaural_beats, brainwave_music, raw_frequencies, sleep_ambient, depression_anxiety. "
-            "Keys: reflection, reframe, themes, soundscapeCategory.")
-    content = (f"Mode: {e.get('mode')}\nMood: {word}\nPrompt: {e.get('prompt') or '-'}\n"
-               f"Entry:\n{entry_text(e)[:2500]}")
+    mode = e.get("mode") if e.get("mode") in MODE_GUIDE else "free"
+    task = (
+        "Write Lucille's reflection on one journal entry. "
+        f"{MODE_GUIDE[mode]} "
+        "'reflection': 2-3 sentences, 25-70 words, second person, ending somewhere steadier than where the entry ended. "
+        + ("'reframe': the entry holds a harsh or stuck thought. Offer ONE gentler, still-true way to hold it, built "
+           "from their own words (e.g. all-or-nothing -> one part of it; a prediction -> what is known right now; "
+           "self-criticism -> how they'd speak to a friend). Max 45 words, no jargon or labels, end with one short "
+           "question. "
+           if need else "'reframe': null. ")
+        + "'themes': up to 3 lowercase single words. "
+        "'soundscapeCategory': one of music_meditations, vaporwave, jazz, nature, binaural_beats, brainwave_music, "
+        "raw_frequencies, sleep_ambient, depression_anxiety, chosen to suit how they feel now. "
+        "Return exactly these keys: reflection, reframe, themes, soundscapeCategory.\n"
+        'Example (guided, mood Restless): {"reflection": "You named a lot pulling at you at once: the deadline, the '
+        'inbox, the call you keep putting off. Writing it down already turned a blur into a short list.", '
+        '"reframe": "Instead of \'I have to handle all of it tonight\', maybe \'one of these matters tonight, the rest '
+        'has a place tomorrow\'. Which one is tonight\'s?", "themes": ["work"], "soundscapeCategory": "binaural_beats"}'
+    )
+    content = (f"Mode: {mode}\nMood word: {word}\nPrompt they answered: {e.get('prompt') or '-'}\n"
+               f"<entry>\n{entry_text(e)[:2500]}\n</entry>")
     out = await llm.complete_json(task, content, base)
+    if out.get("_source") == "llm":
+        reason = validate_reflection(out, need)
+        if reason:
+            logger.info(f"reflection rejected ({reason}); using fallback")
+            out = dict(base, _source="fallback", _rejected=reason)
+    if not need:
+        out["reframe"] = None
     if out.get("soundscapeCategory") not in {c["id"] for c in core.dataset("soundscape_catalog")["categories"]}:
         out["soundscapeCategory"] = base["soundscapeCategory"]
     if not isinstance(out.get("themes"), list):
         out["themes"] = themes
+    out["themes"] = [str(t).lower()[:24] for t in out["themes"]][:3]
     return out
 
 
@@ -152,10 +218,14 @@ async def weekly_reflection(repo: Repo, uid: str, tz: str, allow_llm: bool, gene
     }
     out = fallback
     if allow_llm:
-        snippets = "\n".join(f"- ({r.get('mode')}, {(r.get('mood') or {}).get('word', '?')}) {entry_text(r)[:200]}" for r in rows[:7])
-        task = ("Write Lucille's short weekly letter (max 70 words) to the user: themes, one pattern, "
-                "one kind observation, end with an inviting question. Keys: text, themes (max 4 words).")
-        out = await llm.complete_json(task, f"Entries this week:\n{snippets}", fallback)
+        snippets = "\n".join(f"<entry mode=\"{r.get('mode')}\" mood=\"{(r.get('mood') or {}).get('word', '?')}\">"
+                             f"{entry_text(r)[:200]}</entry>" for r in rows[:7])
+        task = ("Write Lucille's short weekly letter to the person, 40-70 words: the main themes, one gentle "
+                "pattern you notice (time of day, what helped), one kind observation, and end with one inviting "
+                "question. Do not quote anything sensitive. Keys: text, themes (up to 4 lowercase words).")
+        out = await llm.complete_json(task, f"This week's entries:\n{snippets}", fallback)
+        if out.get("_source") == "llm" and validate_reflection({"reflection": out.get("text")}, False):
+            out = fallback
     doc = {"week": wk, "text": out["text"], "themes": out.get("themes", fallback["themes"]),
            "entries": len(rows), "topWord": top_word, "aiGenerated": out.get("_source") == "llm",
            "createdAt": core.iso(core.now_utc())}
