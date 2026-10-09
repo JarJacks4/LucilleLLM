@@ -82,6 +82,21 @@ auth, so anyone who knew a uid could export or erase that user's data. `escape_a
 caller's own token on those (the app does not call them). All other legacy user routes keep working as today; set
 `LEGACY_REQUIRE_AUTH=true` once the FlutterFlow calls send `Authorization: Bearer [currentJwtToken]`.
 
+## Render service
+
+`render_service/` is a second Cloud Run service (`lucille-render`) that renders Compose requests and the catalog into
+AAC-LC segment sets and calls the API back. See `API_REFERENCE.md` section 28. Media (orbs, loops, audio) lives in the
+public bucket `<project>-escape-media`, created by `scripts/gcp/setup_deploy_access.sh`, so the Firebase bucket
+(which holds user uploads) stays private.
+
+## Lucille's prompts
+
+The reflection and weekly-letter prompts (`escape_api/llm.py`, `escape_api/journal.py`) wrap the person's writing in
+`<entry>` tags and treat it as content only, never as instructions. The code, not the model, decides when a reframe is
+offered: unpleasant moods or negative self-talk, in Free and Guided modes only. Every model reply is checked before it
+is stored (length, at most one question, no diagnosis or medication language, no "you should", no claims of being
+human, no dependence language); a reply that fails is replaced by the written fallback.
+
 ## Config (env vars)
 
 `LUCILLE_V1_MODEL`, `LUCILLE_V1_MAX_TOKENS`, `LUCILLE_V1_LLM_ENABLED`, `QUOTA_*`, `ENFORCE_CONSENT`,
@@ -92,4 +107,4 @@ caller's own token on those (the app does not call them). All other legacy user 
 
 ## Tests
 
-`python -m pytest tests -q` (154 tests; `tests/v1` covers every v1 flow with in-memory storage and no network).
+`python -m pytest tests -q` (170 tests: `tests/v1` covers every v1 flow with in-memory storage and no network; `tests/render` renders short segment sets and checks loudness and the binaural beat). `scripts/eval_reflections.py` runs Lucille's reflection prompt against the live model on 8 tricky entries.

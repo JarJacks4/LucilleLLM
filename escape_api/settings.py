@@ -38,8 +38,8 @@ class Settings:
         self.deeplinks_allow_planned = _b("DEEPLINKS_ALLOW_PLANNED", False)
 
         # Assets: GCS / CDN base for orbs, loops and audio (public-read bucket or CDN).
-        self.asset_base_url = os.getenv("ASSET_BASE_URL", "https://storage.googleapis.com/escape-self-care-ai.appspot.com")
-        self.audio_base_url = os.getenv("AUDIO_BASE_URL", os.getenv("ASSET_BASE_URL", "https://storage.googleapis.com/escape-self-care-ai.appspot.com"))
+        self.asset_base_url = os.getenv("ASSET_BASE_URL", "https://storage.googleapis.com/escape-self-care-505618-escape-media")
+        self.audio_base_url = os.getenv("AUDIO_BASE_URL", os.getenv("ASSET_BASE_URL", "https://storage.googleapis.com/escape-self-care-505618-escape-media"))
 
         # Lucille render service (soundscape Compose). Empty = queue only.
         self.render_url = os.getenv("LUCILLE_RENDER_URL", "")

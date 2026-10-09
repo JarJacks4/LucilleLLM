@@ -2,9 +2,11 @@
 # One-time setup so GitHub Actions can deploy LucilleLLM to Cloud Run WITHOUT a JSON key.
 # Run in Google Cloud Shell (https://shell.cloud.google.com) as a project Owner:
 #
-#   bash scripts/gcp/setup_deploy_access.sh <PROJECT_ID>
+#   bash scripts/gcp/setup_deploy_access.sh            # project: escape-self-care-505618
 #
 # It creates:
+#   * secrets 'lucille-render-api-key' + 'lucille-render-callback-secret' (API <-> render service)
+#   * public bucket <PROJECT_ID>-escape-media for orbs, loops and audio
 #   * service account  github-deployer@<PROJECT_ID>.iam.gserviceaccount.com  (least privilege)
 #   * Workload Identity pool 'github' + provider 'github-oidc', locked to repo JarJacks4/LucilleLLM
 #   * secret 'internal-service-key' (server-to-server auth for scheduled jobs)
@@ -12,7 +14,10 @@
 # and prints the three values to paste into GitHub -> Settings -> Secrets and variables -> Actions.
 set -euo pipefail
 
-PROJECT_ID="${1:?usage: setup_deploy_access.sh <PROJECT_ID>}"
+PROJECT_ID="${1:-escape-self-care-505618}"
+if [ "$PROJECT_ID" != "escape-self-care-505618" ] && [ "${ALLOW_OTHER_PROJECT:-}" != "1" ]; then
+  echo "This sets up deploys for escape-self-care-505618 (the app's Firebase project). Got $PROJECT_ID; set ALLOW_OTHER_PROJECT=1 to override."; exit 1
+fi
 REPO="${REPO:-JarJacks4/LucilleLLM}"
 REGION="${REGION:-us-central1}"
 SERVICE="${SERVICE:-lucille}"
@@ -72,6 +77,20 @@ if ! gcloud secrets describe internal-service-key >/dev/null 2>&1; then
   head -c 32 /dev/urandom | base64 | tr -d '\n=/+' | gcloud secrets create internal-service-key --data-file=- --replication-policy=automatic
 fi
 
+for S in lucille-render-api-key lucille-render-callback-secret; do
+  gcloud secrets describe "$S" >/dev/null 2>&1 || \
+    head -c 32 /dev/urandom | base64 | tr -d '\n=/+' | gcloud secrets create "$S" --data-file=- --replication-policy=automatic
+done
+
+echo "== Public media bucket for orbs, loops and soundscape audio (kept apart from the Firebase bucket)"
+MEDIA="gs://${PROJECT_ID}-escape-media"
+gcloud storage buckets describe "$MEDIA" >/dev/null 2>&1 || \
+  gcloud storage buckets create "$MEDIA" --location="$REGION" --uniform-bucket-level-access
+gcloud storage buckets add-iam-policy-binding "$MEDIA" --member=allUsers --role=roles/storage.objectViewer >/dev/null
+gcloud storage buckets add-iam-policy-binding "$MEDIA" \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" --role=roles/storage.objectAdmin >/dev/null
+echo "   media base URL: https://storage.googleapis.com/${PROJECT_ID}-escape-media"
+
 echo "== Cloud Scheduler: hourly letters-to-future-self delivery"
 URL="$(gcloud run services describe "$SERVICE" --region="$REGION" --format='value(status.url)' 2>/dev/null || true)"
 if [ -n "$URL" ]; then
@@ -91,7 +110,6 @@ cat <<EOF
 ================  Paste these into GitHub  ================
 Repo: https://github.com/${REPO}/settings/secrets/actions  ->  New repository secret
 
-  GCP_PROJECT_ID        ${PROJECT_ID}
   GCP_WIF_PROVIDER      projects/${PROJECT_NUMBER}/locations/global/workloadIdentityPools/${POOL}/providers/${PROVIDER}
   GCP_DEPLOY_SA         ${SA}
 
