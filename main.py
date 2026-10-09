@@ -308,6 +308,12 @@ app.add_middleware(PrivacyMiddleware)
 app.add_middleware(MetricsMiddleware)
 app.add_middleware(RateLimitMiddleware)
 
+# Escape v1 API (Journal, Mood, Soundscapes AI, Self-Care, GDPR). All routes live
+# under /v1 in escape_api/; nothing above this line changes. Also adds the legacy
+# auth guard for the GDPR routes (see escape_api/legacy_guard.py).
+from escape_api import register as register_escape_v1  # noqa: E402
+register_escape_v1(app)
+
 
 # ── Startup Event ──────────────────────────────────────────
 

@@ -49,6 +49,10 @@ steps:
       - '--cpu-boost'
       # Environment variables — add your production web domain to CORS_ALLOWED_ORIGINS
       # before launching the web frontend. GCS_AUDIO_BUCKET is needed for soundscapes.
-      - '--set-env-vars=ENVIRONMENT=production,LOG_FORMAT=json,LOG_LEVEL=INFO,RATE_LIMIT_CHAT=10,RATE_LIMIT_GLOBAL=100,CORS_ALLOWED_ORIGINS=,GCS_AUDIO_BUCKET='
+      - '--concurrency=80'
+      # v1 API cost knobs (see escape_api/settings.py). ENFORCE_CONSENT keeps mood/journal behind
+      # explicit consent (GDPR Art. 9). LEGACY_REQUIRE_AUTH flips to true once the app sends tokens.
+      - '--set-env-vars=ENVIRONMENT=production,LOG_FORMAT=json,LOG_LEVEL=INFO,RATE_LIMIT_CHAT=10,RATE_LIMIT_GLOBAL=100,CORS_ALLOWED_ORIGINS=,GCS_AUDIO_BUCKET=,ENFORCE_CONSENT=true,LEGACY_REQUIRE_AUTH=false,LUCILLE_V1_MODEL=gpt-4o-mini,LUCILLE_V1_MAX_TOKENS=380,QUOTA_REFLECT_PER_DAY=6,QUOTA_COMPOSE_PER_DAY_FREE=3,PLAN_PROVIDER=catalog,WEATHER_PROVIDER=open-meteo,ASSET_BASE_URL=https://storage.googleapis.com/escape-self-care-ai.appspot.com'
       # Secrets from Google Secret Manager (never in env vars)
-      - '--set-secrets=OPENAI_API_KEY=openai-api-key:latest'
+      # internal-service-key is created by scripts/gcp/setup_deploy_access.sh (Cloud Scheduler jobs use it)
+      - '--set-secrets=OPENAI_API_KEY=openai-api-key:latest,INTERNAL_SERVICE_KEY=internal-service-key:latest'
