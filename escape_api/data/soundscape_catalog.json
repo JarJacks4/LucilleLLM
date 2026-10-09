@@ -1,0 +1,1611 @@
+{
+ "_about": "Escape Soundscapes catalog: the 9 saved music categories x the Soundscapes AI modes (focus, calm, sleep, move, picks). Audio lives in GCS under soundscapes/{category}/{trackId}/ as AAC-LC .m4a segment sets (intro, 4 bodies, outro) per the Lucille audio spec. Static catalog = zero Firestore reads.",
+ "modes": {
+  "picks": {
+   "label": "Lucille Picks",
+   "icon": "picks",
+   "about": "Lucille picks the mode from time of day, weather and your mood."
+  },
+  "focus": {
+   "label": "Focus",
+   "icon": "focus",
+   "bpm": [
+    70,
+    100
+   ]
+  },
+  "calm": {
+   "label": "Calm",
+   "icon": "calm",
+   "bpm": [
+    55,
+    75
+   ]
+  },
+  "sleep": {
+   "label": "Sleep",
+   "icon": "sleep",
+   "bpm": [
+    40,
+    60
+   ],
+   "nightUi": true
+  },
+  "move": {
+   "label": "Move",
+   "icon": "move",
+   "bpm": [
+    100,
+    130
+   ]
+  }
+ },
+ "categories": [
+  {
+   "id": "music_meditations",
+   "label": "Music Meditations",
+   "description": "Slow, melodic pieces to breathe and settle with.",
+   "icon": "lotus",
+   "color": "#B9A3F0",
+   "modes": [
+    "calm",
+    "sleep"
+   ],
+   "disclaimer": null,
+   "order": 0
+  },
+  {
+   "id": "vaporwave",
+   "label": "Vaporwave",
+   "description": "Hazy, nostalgic synth textures for easy focus and late nights.",
+   "icon": "cassette",
+   "color": "#E99C64",
+   "modes": [
+    "focus",
+    "calm"
+   ],
+   "disclaimer": null,
+   "order": 1
+  },
+  {
+   "id": "jazz",
+   "label": "Jazz",
+   "description": "Soft lo-fi and late-night jazz that sits in the background.",
+   "icon": "sax",
+   "color": "#EF7702",
+   "modes": [
+    "focus",
+    "calm"
+   ],
+   "disclaimer": null,
+   "order": 2
+  },
+  {
+   "id": "nature",
+   "label": "Nature",
+   "description": "Rain, ocean, forest and fire beds, gently mixed.",
+   "icon": "leaf",
+   "color": "#39D9C1",
+   "modes": [
+    "calm",
+    "sleep",
+    "focus"
+   ],
+   "disclaimer": null,
+   "order": 3
+  },
+  {
+   "id": "binaural_beats",
+   "label": "Binaural Beats",
+   "description": "Stereo beat layers (headphones on) for focus, calm or sleep.",
+   "icon": "headphones",
+   "color": "#4CF6F6",
+   "modes": [
+    "focus",
+    "calm",
+    "sleep"
+   ],
+   "disclaimer": "Use headphones. Not for use while driving.",
+   "order": 4
+  },
+  {
+   "id": "brainwave_music",
+   "label": "Brainwave Music",
+   "description": "Music tuned around delta, theta, alpha and beta pulses.",
+   "icon": "wave",
+   "color": "#8E7CD9",
+   "modes": [
+    "focus",
+    "calm",
+    "sleep"
+   ],
+   "disclaimer": "Not for use while driving.",
+   "order": 5
+  },
+  {
+   "id": "raw_frequencies",
+   "label": "Raw Frequencies",
+   "description": "Pure tones and drones at named frequencies, nothing else.",
+   "icon": "tuning",
+   "color": "#D0E3F7",
+   "modes": [
+    "calm",
+    "sleep"
+   ],
+   "disclaimer": null,
+   "order": 6
+  },
+  {
+   "id": "sleep_ambient",
+   "label": "Sleep / Ambient Music",
+   "description": "Long, low, slowly evolving ambience for winding down and sleep.",
+   "icon": "moon",
+   "color": "#39519F",
+   "modes": [
+    "sleep",
+    "calm"
+   ],
+   "disclaimer": null,
+   "order": 7
+  },
+  {
+   "id": "depression_anxiety",
+   "label": "Music for Depression & Anxiety",
+   "description": "Gentle, steady music for heavy or anxious moments. A support, not a treatment.",
+   "icon": "hands",
+   "color": "#A1A6CC",
+   "modes": [
+    "calm",
+    "sleep"
+   ],
+   "disclaimer": "Music can support how you feel, but it isn't a treatment. If you're struggling, Lucille can share support resources any time.",
+   "order": 8
+  }
+ ],
+ "tracks": [
+  {
+   "id": "music_meditations_01",
+   "title": "Slow Bloom",
+   "category": "music_meditations",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.25,
+    "texture": 0.6
+   },
+   "bpm": 62,
+   "key": "D",
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "anxious",
+    "overwhelmed"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/music_meditations/music_meditations_01/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "music_meditations_02",
+   "title": "Breath Garden",
+   "category": "music_meditations",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.2,
+    "texture": 0.45
+   },
+   "bpm": 58,
+   "key": "F",
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "stressed",
+    "restless"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/music_meditations/music_meditations_02/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "music_meditations_03",
+   "title": "Evening Bowl",
+   "category": "music_meditations",
+   "mode": "sleep",
+   "moodField": {
+    "energy": 0.12,
+    "texture": 0.7
+   },
+   "bpm": 54,
+   "key": "A",
+   "brainwave": {
+    "type": "theta",
+    "hz": 6
+   },
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "tired",
+    "drained"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/music_meditations/music_meditations_03/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "music_meditations_04",
+   "title": "Morning Light Meditation",
+   "category": "music_meditations",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.4,
+    "texture": 0.4
+   },
+   "bpm": 68,
+   "key": "G",
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "foggy",
+    "low"
+   ],
+   "premium": true,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/music_meditations/music_meditations_04/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "vaporwave_01",
+   "title": "Mall at 2AM",
+   "category": "vaporwave",
+   "mode": "focus",
+   "moodField": {
+    "energy": 0.45,
+    "texture": 0.8
+   },
+   "bpm": 78,
+   "key": "Eb",
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "bored",
+    "foggy"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/vaporwave/vaporwave_01/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "vaporwave_02",
+   "title": "Pastel Highway",
+   "category": "vaporwave",
+   "mode": "focus",
+   "moodField": {
+    "energy": 0.6,
+    "texture": 0.7
+   },
+   "bpm": 84,
+   "key": "C",
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "restless",
+    "uncertain"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/vaporwave/vaporwave_02/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "vaporwave_03",
+   "title": "Neon Lagoon",
+   "category": "vaporwave",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.3,
+    "texture": 0.85
+   },
+   "bpm": 72,
+   "key": "Ab",
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "nostalgic",
+    "tender"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/vaporwave/vaporwave_03/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "vaporwave_04",
+   "title": "Sunset Arcade",
+   "category": "vaporwave",
+   "mode": "focus",
+   "moodField": {
+    "energy": 0.7,
+    "texture": 0.6
+   },
+   "bpm": 90,
+   "key": "F",
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "bored",
+    "low"
+   ],
+   "premium": true,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/vaporwave/vaporwave_04/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "jazz_01",
+   "title": "Rainy Window Trio",
+   "category": "jazz",
+   "mode": "focus",
+   "moodField": {
+    "energy": 0.4,
+    "texture": 0.4
+   },
+   "bpm": 76,
+   "key": "Bb",
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "foggy",
+    "neutral"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/jazz/jazz_01/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "jazz_02",
+   "title": "Late Shift Keys",
+   "category": "jazz",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.3,
+    "texture": 0.5
+   },
+   "bpm": 68,
+   "key": "Eb",
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "tired",
+    "lonely"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/jazz/jazz_02/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "jazz_03",
+   "title": "Coffee Ring",
+   "category": "jazz",
+   "mode": "focus",
+   "moodField": {
+    "energy": 0.55,
+    "texture": 0.35
+   },
+   "bpm": 88,
+   "key": "F",
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "bored",
+    "uncertain"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/jazz/jazz_03/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "jazz_04",
+   "title": "Blue Hour Brushes",
+   "category": "jazz",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.25,
+    "texture": 0.55
+   },
+   "bpm": 64,
+   "key": "Db",
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "sad",
+    "reflective"
+   ],
+   "premium": true,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/jazz/jazz_04/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "nature_01",
+   "title": "Gentle Rain",
+   "category": "nature",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.2,
+    "texture": 0.3
+   },
+   "bpm": null,
+   "key": null,
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "anxious",
+    "overwhelmed",
+    "sad"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/nature/nature_01/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "nature_02",
+   "title": "Ocean Waves",
+   "category": "nature",
+   "mode": "sleep",
+   "moodField": {
+    "energy": 0.15,
+    "texture": 0.5
+   },
+   "bpm": null,
+   "key": null,
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "anxious",
+    "lonely"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/nature/nature_02/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "nature_03",
+   "title": "Forest Morning",
+   "category": "nature",
+   "mode": "focus",
+   "moodField": {
+    "energy": 0.45,
+    "texture": 0.3
+   },
+   "bpm": null,
+   "key": null,
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "foggy",
+    "bored"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/nature/nature_03/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "nature_04",
+   "title": "Mountain Stream",
+   "category": "nature",
+   "mode": "focus",
+   "moodField": {
+    "energy": 0.5,
+    "texture": 0.25
+   },
+   "bpm": null,
+   "key": null,
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "restless",
+    "stressed"
+   ],
+   "premium": true,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/nature/nature_04/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "nature_05",
+   "title": "Cabin Fireplace",
+   "category": "nature",
+   "mode": "sleep",
+   "moodField": {
+    "energy": 0.1,
+    "texture": 0.45
+   },
+   "bpm": null,
+   "key": null,
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "lonely",
+    "tired"
+   ],
+   "premium": true,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/nature/nature_05/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "binaural_beats_01",
+   "title": "Beta Focus 16 Hz",
+   "category": "binaural_beats",
+   "mode": "focus",
+   "moodField": {
+    "energy": 0.75,
+    "texture": 0.3
+   },
+   "bpm": 96,
+   "key": "C",
+   "brainwave": {
+    "type": "beta",
+    "hz": 16
+   },
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "foggy",
+    "bored"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/binaural_beats/binaural_beats_01/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": true
+  },
+  {
+   "id": "binaural_beats_02",
+   "title": "Alpha Calm 10 Hz",
+   "category": "binaural_beats",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.35,
+    "texture": 0.5
+   },
+   "bpm": 70,
+   "key": "D",
+   "brainwave": {
+    "type": "alpha",
+    "hz": 10
+   },
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "stressed",
+    "anxious"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/binaural_beats/binaural_beats_02/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": true
+  },
+  {
+   "id": "binaural_beats_03",
+   "title": "Theta Drift 6 Hz",
+   "category": "binaural_beats",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.2,
+    "texture": 0.75
+   },
+   "bpm": 56,
+   "key": "A",
+   "brainwave": {
+    "type": "theta",
+    "hz": 6
+   },
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "overwhelmed",
+    "restless"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/binaural_beats/binaural_beats_03/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": true
+  },
+  {
+   "id": "binaural_beats_04",
+   "title": "Delta Sleep 2 Hz",
+   "category": "binaural_beats",
+   "mode": "sleep",
+   "moodField": {
+    "energy": 0.05,
+    "texture": 0.6
+   },
+   "bpm": 44,
+   "key": "F",
+   "brainwave": {
+    "type": "delta",
+    "hz": 2
+   },
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "tired",
+    "drained"
+   ],
+   "premium": true,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/binaural_beats/binaural_beats_04/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": true
+  },
+  {
+   "id": "brainwave_music_01",
+   "title": "Deep Work Pulse",
+   "category": "brainwave_music",
+   "mode": "focus",
+   "moodField": {
+    "energy": 0.7,
+    "texture": 0.35
+   },
+   "bpm": 92,
+   "key": "E",
+   "brainwave": {
+    "type": "beta",
+    "hz": 14
+   },
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "foggy",
+    "uncertain"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/brainwave_music/brainwave_music_01/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "brainwave_music_02",
+   "title": "Calm Current",
+   "category": "brainwave_music",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.3,
+    "texture": 0.55
+   },
+   "bpm": 66,
+   "key": "G",
+   "brainwave": {
+    "type": "alpha",
+    "hz": 9
+   },
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "anxious",
+    "tense"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/brainwave_music/brainwave_music_02/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "brainwave_music_03",
+   "title": "Dream Gate",
+   "category": "brainwave_music",
+   "mode": "sleep",
+   "moodField": {
+    "energy": 0.12,
+    "texture": 0.85
+   },
+   "bpm": 52,
+   "key": "Bb",
+   "brainwave": {
+    "type": "theta",
+    "hz": 5
+   },
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "restless",
+    "overwhelmed"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/brainwave_music/brainwave_music_03/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "brainwave_music_04",
+   "title": "Night Tide",
+   "category": "brainwave_music",
+   "mode": "sleep",
+   "moodField": {
+    "energy": 0.05,
+    "texture": 0.6
+   },
+   "bpm": 42,
+   "key": "D",
+   "brainwave": {
+    "type": "delta",
+    "hz": 1.5
+   },
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "tired",
+    "drained"
+   ],
+   "premium": true,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/brainwave_music/brainwave_music_04/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "raw_frequencies_01",
+   "title": "174 Hz Drone",
+   "category": "raw_frequencies",
+   "mode": "sleep",
+   "moodField": {
+    "energy": 0.08,
+    "texture": 0.4
+   },
+   "bpm": null,
+   "key": null,
+   "brainwave": null,
+   "frequencyHz": 174,
+   "durationSec": 1800,
+   "targetWords": [
+    "drained",
+    "hurt"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/raw_frequencies/raw_frequencies_01/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "raw_frequencies_02",
+   "title": "396 Hz Drone",
+   "category": "raw_frequencies",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.2,
+    "texture": 0.4
+   },
+   "bpm": null,
+   "key": null,
+   "brainwave": null,
+   "frequencyHz": 396,
+   "durationSec": 1800,
+   "targetWords": [
+    "anxious",
+    "tense"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/raw_frequencies/raw_frequencies_02/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "raw_frequencies_03",
+   "title": "432 Hz Drone",
+   "category": "raw_frequencies",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.25,
+    "texture": 0.5
+   },
+   "bpm": null,
+   "key": null,
+   "brainwave": null,
+   "frequencyHz": 432,
+   "durationSec": 1800,
+   "targetWords": [
+    "stressed",
+    "restless"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/raw_frequencies/raw_frequencies_03/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "raw_frequencies_04",
+   "title": "528 Hz Drone",
+   "category": "raw_frequencies",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.3,
+    "texture": 0.55
+   },
+   "bpm": null,
+   "key": null,
+   "brainwave": null,
+   "frequencyHz": 528,
+   "durationSec": 1800,
+   "targetWords": [
+    "low",
+    "sad"
+   ],
+   "premium": true,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/raw_frequencies/raw_frequencies_04/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "raw_frequencies_05",
+   "title": "639 Hz Drone",
+   "category": "raw_frequencies",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.3,
+    "texture": 0.6
+   },
+   "bpm": null,
+   "key": null,
+   "brainwave": null,
+   "frequencyHz": 639,
+   "durationSec": 1800,
+   "targetWords": [
+    "lonely",
+    "hurt"
+   ],
+   "premium": true,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/raw_frequencies/raw_frequencies_05/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "raw_frequencies_06",
+   "title": "852 Hz Drone",
+   "category": "raw_frequencies",
+   "mode": "focus",
+   "moodField": {
+    "energy": 0.45,
+    "texture": 0.6
+   },
+   "bpm": null,
+   "key": null,
+   "brainwave": null,
+   "frequencyHz": 852,
+   "durationSec": 1800,
+   "targetWords": [
+    "foggy",
+    "uncertain"
+   ],
+   "premium": true,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/raw_frequencies/raw_frequencies_06/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "sleep_ambient_01",
+   "title": "Night Drift",
+   "category": "sleep_ambient",
+   "mode": "sleep",
+   "moodField": {
+    "energy": 0.08,
+    "texture": 0.7
+   },
+   "bpm": 48,
+   "key": "D",
+   "brainwave": {
+    "type": "delta",
+    "hz": 2
+   },
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "tired",
+    "restless"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/sleep_ambient/sleep_ambient_01/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "sleep_ambient_02",
+   "title": "Deep Night Pads",
+   "category": "sleep_ambient",
+   "mode": "sleep",
+   "moodField": {
+    "energy": 0.05,
+    "texture": 0.8
+   },
+   "bpm": 44,
+   "key": "A",
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "drained",
+    "overwhelmed"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/sleep_ambient/sleep_ambient_02/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "sleep_ambient_03",
+   "title": "Starfield",
+   "category": "sleep_ambient",
+   "mode": "sleep",
+   "moodField": {
+    "energy": 0.12,
+    "texture": 0.9
+   },
+   "bpm": 52,
+   "key": "F",
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "lonely",
+    "nostalgic"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/sleep_ambient/sleep_ambient_03/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "sleep_ambient_04",
+   "title": "Slow Snowfall",
+   "category": "sleep_ambient",
+   "mode": "sleep",
+   "moodField": {
+    "energy": 0.06,
+    "texture": 0.55
+   },
+   "bpm": 46,
+   "key": "E",
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "anxious",
+    "tense"
+   ],
+   "premium": true,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/sleep_ambient/sleep_ambient_04/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "depression_anxiety_01",
+   "title": "Steady Ground",
+   "category": "depression_anxiety",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.2,
+    "texture": 0.2
+   },
+   "bpm": 60,
+   "key": "C",
+   "brainwave": {
+    "type": "alpha",
+    "hz": 10
+   },
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "anxious",
+    "overwhelmed",
+    "tense"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/depression_anxiety/depression_anxiety_01/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "depression_anxiety_02",
+   "title": "Gentle Lift",
+   "category": "depression_anxiety",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.4,
+    "texture": 0.35
+   },
+   "bpm": 70,
+   "key": "G",
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "low",
+    "sad",
+    "drained"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/depression_anxiety/depression_anxiety_02/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "depression_anxiety_03",
+   "title": "Safe Harbor",
+   "category": "depression_anxiety",
+   "mode": "calm",
+   "moodField": {
+    "energy": 0.15,
+    "texture": 0.5
+   },
+   "bpm": 56,
+   "key": "F",
+   "brainwave": null,
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "lonely",
+    "hurt",
+    "sad"
+   ],
+   "premium": false,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/depression_anxiety/depression_anxiety_03/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  },
+  {
+   "id": "depression_anxiety_04",
+   "title": "Breathing Room",
+   "category": "depression_anxiety",
+   "mode": "sleep",
+   "moodField": {
+    "energy": 0.1,
+    "texture": 0.45
+   },
+   "bpm": 52,
+   "key": "D",
+   "brainwave": {
+    "type": "theta",
+    "hz": 6
+   },
+   "frequencyHz": null,
+   "durationSec": 1800,
+   "targetWords": [
+    "anxious",
+    "restless"
+   ],
+   "premium": true,
+   "composedBy": "Lucille (AI)",
+   "audio": {
+    "path": "soundscapes/depression_anxiety/depression_anxiety_04/",
+    "segments": {
+     "intro": "intro.m4a",
+     "bodies": [
+      "body_1.m4a",
+      "body_2.m4a",
+      "body_3.m4a",
+      "body_4.m4a"
+     ],
+     "outro": "outro.m4a"
+    },
+    "preview": "preview.m4a"
+   },
+   "headphones": false
+  }
+ ]
+}

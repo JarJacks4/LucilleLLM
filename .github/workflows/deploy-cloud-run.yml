@@ -1,0 +1,56 @@
+name: Deploy to Cloud Run
+
+# Tests run on every PR. Merging to main (or running this by hand) builds with
+# cloudbuild.yaml, which runs the tests again, pushes to Artifact Registry and
+# deploys the `lucille` service in us-central1.
+# Auth is keyless (Workload Identity Federation) — see scripts/gcp/setup_deploy_access.sh.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write   # required for keyless auth to Google Cloud
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt pytest pytest-asyncio httpx
+      - run: python -m pytest tests -q
+
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SA }}
+      - uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+      - name: Build, test and deploy (cloudbuild.yaml)
+        run: gcloud builds submit --config cloudbuild.yaml --project "${{ secrets.GCP_PROJECT_ID }}" .
+      - name: Smoke test
+        run: |
+          URL=$(gcloud run services describe lucille --region us-central1 --format='value(status.url)')
+          curl -fsS "$URL/health" > /dev/null
+          curl -fsS "$URL/v1/health"
+          curl -fsS "$URL/v1/soundscapes/categories" | python -c "import json,sys; assert len(json.load(sys.stdin)['categories'])==9"
