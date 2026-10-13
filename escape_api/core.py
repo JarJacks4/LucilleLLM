@@ -222,10 +222,10 @@ def soundscape_loop(mode: str, energy: float, texture: float, night: bool = Fals
 
 ENERGY_CENTERS = [
     {"level": 1, "key": "grounding",  "name": "Grounding",  "chakra": "Root",         "color": "#E5484D", "route": "MindRootChakraVersion5"},
-    {"level": 2, "key": "creativity", "name": "Creativity", "chakra": "Sacral",       "color": "#EF7702", "route": "MindSacralChakraVersion5"},
+    {"level": 2, "key": "creativity", "name": "Creativity", "chakra": "Sacral",        "color": "#EF7702", "route": "MindSacralChakraVersion5"},
     {"level": 3, "key": "power",      "name": "Power",      "chakra": "Solar Plexus", "color": "#F5C542", "route": "MindSolarPlexusChakraVersion5"},
-    {"level": 4, "key": "connection", "name": "Connection", "chakra": "Heart",        "color": "#39D9C1", "route": "MindHeartChakraVersion5"},
-    {"level": 5, "key": "expression", "name": "Expression", "chakra": "Throat",       "color": "#4CF6F6", "route": "MindThroatChakraVersion5"},
+    {"level": 4, "key": "connection", "name": "Connection", "chakra": "Heart",         "color": "#39D9C1", "route": "MindHeartChakraVersion5"},
+    {"level": 5, "key": "expression", "name": "Expression", "chakra": "Throat",        "color": "#4CF6F6", "route": "MindThroatChakraVersion5"},
     {"level": 6, "key": "intuition",  "name": "Intuition",  "chakra": "Third Eye",    "color": "#8E7CD9", "route": "MindThirdEyeChakraVersion5"},
     {"level": 7, "key": "purpose",    "name": "Purpose",    "chakra": "Crown",        "color": "#B9A3F0", "route": "MindCrownChakraVersion5"},
 ]
@@ -270,10 +270,38 @@ def get_state(repo: Repo, uid: str) -> Dict[str, Any]:
 
 
 def touch_activity(repo: Repo, uid: str, tz: Optional[str], kind: str) -> Dict[str, Any]:
-    # ... (inner logic unchanged) ...
+    """
+    One streak across mind / body / journal / sound (roadmap: 'one streak number').
+    Same local day never double-counts. One grace day per 7 days keeps a missed
+    day from wiping the streak ('gentle rhythm, not streaks').
+    """
+    st = get_state(repo, uid)
+    tz = tz or st.get("timezone") or "UTC"
+    today = date.fromisoformat(local_day(tz))
+    last = date.fromisoformat(st["lastActiveDay"]) if st.get("lastActiveDay") else None
+    streak = st["streakDays"]
+    grace_used = st.get("graceUsedOn")
+    if last == today:
+        pass
+    elif last == today - timedelta(days=1):
+        streak += 1
+    elif last == today - timedelta(days=2) and (not grace_used or date.fromisoformat(grace_used) <= today - timedelta(days=7)):
+        streak += 1
+        grace_used = today.isoformat()
+    else:
+        streak = 1
+    active_days = [d for d in st.get("recentDays", []) if d >= (today - timedelta(days=27)).isoformat()]
+    if today.isoformat() not in active_days:
+        active_days.append(today.isoformat())
+    upd = {
+        "streakDays": streak, "bestStreak": max(streak, st["bestStreak"]),
+        "lastActiveDay": today.isoformat(), "graceUsedOn": grace_used, "timezone": tz,
+        "recentDays": sorted(active_days)[-28:], "updatedAt": iso(now_utc()),
+        f"lastActivity.{kind}": iso(now_utc()),
+    }
     flat = {k: v for k, v in upd.items() if "." not in k}
     flat["lastActivity"] = dict(st.get("lastActivity", {}), **{kind: upd[f"lastActivity.{kind}"]})
-    repo.set(user_path(uid, "state", "current"), flat, merge=True) # <--- Updated to even segments
+    repo.set(user_path(uid, "state", "current"), flat, merge=True)
     st.update(flat)
     return st
 
@@ -291,7 +319,7 @@ def award_coins(repo: Repo, uid: str, tz: Optional[str], action: str, units: int
         return 0
     amount = per * allowed
     repo.increment(usage_path, {f"coins_{action}": allowed})
-    repo.increment(user_path(uid, "state", "current"), {"coins": amount, "lifetimeCoins": amount}) # <--- Updated to even segments
+    repo.increment(user_path(uid, "state", "current"), {"coins": amount, "lifetimeCoins": amount})
     return amount
 
 
