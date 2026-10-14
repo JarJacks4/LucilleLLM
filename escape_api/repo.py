@@ -9,7 +9,7 @@ All v1 data for a user lives under ONE root document:
         journal_entries/    (coll)
         journal_letters/    (coll)
         mood_checkins/      (coll)
-        mood_days/          (coll)  daily rollups  -> cheap Week/Month stats
+        mood_days/          (coll)  daily rollups -> cheap Week/Month stats
         mood_months/        (coll)  monthly rollups -> cheap Year stats
         listening_sessions/ (coll)
         library/            (coll)  saved soundscapes
@@ -44,11 +44,15 @@ Where = Tuple[str, str, Any]  # (field, op, value)  op in ==, <, <=, >, >=, in, 
 def user_path(uid: str, *parts: str) -> str:
     """
     Constructs a Firestore path for a user under escape_users/{uid}.
-    Automatically ensures an even number of path elements to prevent Firestore 
-    'A document must have an even number of path elements' errors when single 
-    segments (like 'state' or 'consents') are passed without an explicit document ID.
+    Raw path generation only; document vs collection semantics are handled by the repo layer.
     """
     segments = [ROOT, uid, *parts]
+    return "/".join(segments)
+
+
+def _normalize_doc_path(path: str) -> str:
+    """Automatically ensures document paths have an even number of elements by appending 'current'."""
+    segments = path.split("/")
     if len(segments) % 2 != 0:
         segments.append("current")
     return "/".join(segments)
@@ -166,24 +170,28 @@ class MemoryRepo(Repo):
         self._lock = threading.RLock()
 
     def get(self, path):
+        norm_path = _normalize_doc_path(path)
         with self._lock:
-            d = self._docs.get(path)
+            d = self._docs.get(norm_path)
             return copy.deepcopy(d) if d is not None else None
 
     def set(self, path, data, merge=False):
+        norm_path = _normalize_doc_path(path)
         with self._lock:
-            if merge and path in self._docs:
-                _deep_merge(self._docs[path], data)
+            if merge and norm_path in self._docs:
+                _deep_merge(self._docs[norm_path], data)
             else:
-                self._docs[path] = copy.deepcopy(data)
+                self._docs[norm_path] = copy.deepcopy(data)
 
     def delete(self, path):
+        norm_path = _normalize_doc_path(path)
         with self._lock:
-            self._docs.pop(path, None)
+            self._docs.pop(norm_path, None)
 
     def increment(self, path, deltas, extra=None):
+        norm_path = _normalize_doc_path(path)
         with self._lock:
-            doc = self._docs.setdefault(path, {})
+            doc = self._docs.setdefault(norm_path, {})
             for k, v in deltas.items():
                 _set_dotted(doc, k, (_get_dotted(doc, k) or 0) + v)
             if extra:
@@ -215,8 +223,9 @@ class MemoryRepo(Repo):
         return rows[:limit] if limit else rows
 
     def list_subcollections(self, doc_path):
+        norm_path = _normalize_doc_path(doc_path)
         with self._lock:
-            prefix = doc_path + "/"
+            prefix = norm_path + "/"
             subs = {p[len(prefix):].split("/", 1)[0] for p in self._docs if p.startswith(prefix)}
         return sorted(subs)
 
@@ -229,7 +238,7 @@ class FirestoreRepo(Repo):
         self.db = db
 
     def _doc(self, path):
-        return self.db.document(path)
+        return self.db.document(_normalize_doc_path(path))
 
     def get(self, path):
         snap = self._doc(path).get()
