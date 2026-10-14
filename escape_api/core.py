@@ -222,10 +222,10 @@ def soundscape_loop(mode: str, energy: float, texture: float, night: bool = Fals
 
 ENERGY_CENTERS = [
     {"level": 1, "key": "grounding",  "name": "Grounding",  "chakra": "Root",         "color": "#E5484D", "route": "MindRootChakraVersion5"},
-    {"level": 2, "key": "creativity", "name": "Creativity", "chakra": "Sacral",       "color": "#EF7702", "route": "MindSacralChakraVersion5"},
+    {"level": 2, "key": "creativity", "name": "Creativity", "chakra": "Sacral",        "color": "#EF7702", "route": "MindSacralChakraVersion5"},
     {"level": 3, "key": "power",      "name": "Power",      "chakra": "Solar Plexus", "color": "#F5C542", "route": "MindSolarPlexusChakraVersion5"},
-    {"level": 4, "key": "connection", "name": "Connection", "chakra": "Heart",        "color": "#39D9C1", "route": "MindHeartChakraVersion5"},
-    {"level": 5, "key": "expression", "name": "Expression", "chakra": "Throat",       "color": "#4CF6F6", "route": "MindThroatChakraVersion5"},
+    {"level": 4, "key": "connection", "name": "Connection", "chakra": "Heart",         "color": "#39D9C1", "route": "MindHeartChakraVersion5"},
+    {"level": 5, "key": "expression", "name": "Expression", "chakra": "Throat",        "color": "#4CF6F6", "route": "MindThroatChakraVersion5"},
     {"level": 6, "key": "intuition",  "name": "Intuition",  "chakra": "Third Eye",    "color": "#8E7CD9", "route": "MindThirdEyeChakraVersion5"},
     {"level": 7, "key": "purpose",    "name": "Purpose",    "chakra": "Crown",        "color": "#B9A3F0", "route": "MindCrownChakraVersion5"},
 ]
@@ -260,7 +260,7 @@ def energy_progress(lifetime_coins: int) -> Dict[str, Any]:
 
 
 def get_state(repo: Repo, uid: str) -> Dict[str, Any]:
-    st = repo.get(user_path(uid, "state")) or {}
+    st = repo.get(user_path(uid, "state", "current")) or {}
     st.setdefault("streakDays", 0)
     st.setdefault("bestStreak", 0)
     st.setdefault("coins", 0)
@@ -301,7 +301,7 @@ def touch_activity(repo: Repo, uid: str, tz: Optional[str], kind: str) -> Dict[s
     }
     flat = {k: v for k, v in upd.items() if "." not in k}
     flat["lastActivity"] = dict(st.get("lastActivity", {}), **{kind: upd[f"lastActivity.{kind}"]})
-    repo.set(user_path(uid, "state"), flat, merge=True)
+    repo.set(user_path(uid, "state", "current"), flat, merge=True)
     st.update(flat)
     return st
 
@@ -319,7 +319,7 @@ def award_coins(repo: Repo, uid: str, tz: Optional[str], action: str, units: int
         return 0
     amount = per * allowed
     repo.increment(usage_path, {f"coins_{action}": allowed})
-    repo.increment(user_path(uid, "state"), {"coins": amount, "lifetimeCoins": amount})
+    repo.increment(user_path(uid, "state", "current"), {"coins": amount, "lifetimeCoins": amount})
     return amount
 
 
