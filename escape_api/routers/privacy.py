@@ -65,7 +65,7 @@ def purposes():
 
 @router.get("/consents", summary="Current consent flags + history")
 def get_consents(c: Caller = Depends(caller)):
-    d = c.repo.get(user_path(c.uid, "consents", "current")) or {}
+    d = c.repo.get(user_path(c.uid, "consents")) or {}
     return {"flags": {k: bool(d.get("flags", {}).get(k)) for k in PURPOSES},
             "restricted": bool(d.get("restricted")), "policyVersion": d.get("policyVersion"),
             "history": d.get("history", [])[-20:]}
@@ -76,24 +76,24 @@ def put_consents(body: ConsentsIn, request: Request, c: Caller = Depends(caller)
     unknown = set(body.flags) - set(PURPOSES)
     if unknown:
         raise HTTPException(422, f"Unknown purposes: {sorted(unknown)}")
-    d = c.repo.get(user_path(c.uid, "consents", "current")) or {}
+    d = c.repo.get(user_path(c.uid, "consents")) or {}
     flags = {**d.get("flags", {}), **body.flags}
     hist = d.get("history", [])
     hist.append({"at": core.iso(core.now_utc()), "changes": body.flags, "policyVersion": body.policyVersion,
                  "ip": _ip(request)[:45]})
-    c.repo.set(user_path(c.uid, "consents", "current"), {"flags": flags, "policyVersion": body.policyVersion,
-                                                 "history": hist[-100:], "updatedAt": core.iso(core.now_utc())}, merge=True)
+    c.repo.set(user_path(c.uid, "consents"), {"flags": flags, "policyVersion": body.policyVersion,
+                                              "history": hist[-100:], "updatedAt": core.iso(core.now_utc())}, merge=True)
     return get_consents(c)
 
 
 @router.post("/restrict", summary="Art. 18: pause all optional processing (AI reflection, personalisation, analytics)")
 def restrict(body: RestrictIn, c: Caller = Depends(caller)):
-    d = c.repo.get(user_path(c.uid, "consents", "current")) or {}
+    d = c.repo.get(user_path(c.uid, "consents")) or {}
     flags = d.get("flags", {})
     if body.restricted:
         for k in ("ai_reflection", "personalization", "analytics", "location_weather", "health_data"):
             flags[k] = False
-    c.repo.set(user_path(c.uid, "consents", "current"), {"flags": flags, "restricted": body.restricted}, merge=True)
+    c.repo.set(user_path(c.uid, "consents"), {"flags": flags, "restricted": body.restricted}, merge=True)
     return get_consents(c)
 
 
@@ -129,19 +129,19 @@ def export(request: Request, c: Caller = Depends(caller), includeLegacy: bool = 
 def delete_scope(scope: Literal["mood", "journal", "soundscapes", "plans", "all"], c: Caller = Depends(caller)):
     n = 0
     if scope == "all":
-        consents = c.repo.get(user_path(c.uid, "consents", "current"))
+        consents = c.repo.get(user_path(c.uid, "consents"))
         n = c.repo.delete_tree(f"{ROOT}/{c.uid}")
         # new revision so no instance serves a cached orb/score built from erased data
-        c.repo.set(user_path(c.uid, "state", "current"), {"moodRev": core.now_utc().timestamp(), "erasedAt": core.iso(core.now_utc())})
+        c.repo.set(user_path(c.uid, "state"), {"moodRev": core.now_utc().timestamp(), "erasedAt": core.iso(core.now_utc())})
         if consents:   # keep the consent record (proof of withdrawal), minus data
-            c.repo.set(user_path(c.uid, "consents", "current"), {"flags": {}, "history": consents.get("history", [])[-100:],
-                                                        "erasedAt": core.iso(core.now_utc())})
+            c.repo.set(user_path(c.uid, "consents"), {"flags": {}, "history": consents.get("history", [])[-100:],
+                                                      "erasedAt": core.iso(core.now_utc())})
     else:
         for coll in SCOPES[scope]:
             for doc_id, _ in c.repo.query(user_path(c.uid, coll)):
                 n += c.repo.delete_tree(user_path(c.uid, coll, doc_id))
         if scope == "mood":
-            c.repo.set(user_path(c.uid, "state", "current"), {"lastMood": None, "moodRev": core.now_utc().timestamp()}, merge=True)
+            c.repo.set(user_path(c.uid, "state"), {"lastMood": None, "moodRev": core.now_utc().timestamp()}, merge=True)
     return {"scope": scope, "deleted": n}
 
 
