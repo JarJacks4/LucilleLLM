@@ -42,7 +42,16 @@ Where = Tuple[str, str, Any]  # (field, op, value)  op in ==, <, <=, >, >=, in, 
 
 
 def user_path(uid: str, *parts: str) -> str:
-    return "/".join([ROOT, uid, *parts])
+    """
+    Constructs a Firestore path for a user under escape_users/{uid}.
+    Automatically ensures an even number of path elements to prevent Firestore 
+    'A document must have an even number of path elements' errors when single 
+    segments (like 'state' or 'consents') are passed without an explicit document ID.
+    """
+    segments = [ROOT, uid, *parts]
+    if len(segments) % 2 != 0:
+        segments.append("current")
+    return "/".join(segments)
 
 
 class Repo:
