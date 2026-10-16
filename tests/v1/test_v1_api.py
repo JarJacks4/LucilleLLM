@@ -72,7 +72,8 @@ def test_mood_scan_fuses_inputs_and_returns_orb_and_suggestions(client):
     j = r.json()
     assert j["checkin"]["word"] == "Restless" and j["checkin"]["tone"] == "restless"
     assert set(j["checkin"]["inputs"]) == {"tap", "voice", "pulse"}
-    assert j["orb"]["orbHevc"].endswith("journal_orb_restless_hevc.mp4")
+    # Same orb as Soundscapes: restless -> focus loop, high energy, rough texture.
+    assert j["orb"]["orbHevc"].endswith("soundscapes/loops/escape_focus_e85_t85_v3_hevc.mp4")
     assert j["suggestions"] and all(s["deeplink"]["url"].startswith("escape://") for s in j["suggestions"])
     assert j["coinsAwarded"] == 5 and j["streakDays"] == 1
     assert j["journalSeed"]["deeplink"]["route"] == "HealthJournal"      # planned page falls back until shipped
