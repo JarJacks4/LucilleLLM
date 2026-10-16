@@ -385,3 +385,24 @@ def test_negative_self_talk_triggers_reframe_even_with_neutral_mood():
     from escape_api import journal
     e = {"mode": "free", "body": "I'm so useless, I never do anything right"}
     assert journal.wants_reframe(e, "mixed") and not journal.wants_reframe({"mode": "ritual", "intention": "x"}, "heavy")
+
+
+def test_voice_transcribe_uses_server_side_key_and_validates(client):
+    consent(client)
+    client.put("/v1/privacy/consents", json={"flags": {"voice": True}}, headers=H)
+
+    class _T:
+        class audio:
+            class transcriptions:
+                @staticmethod
+                async def create(**kw):
+                    assert kw["model"] == "whisper-1" and kw["file"][0].endswith(".m4a")
+                    return type("R", (), {"text": " I felt calm today. "})()
+
+    llm.set_client(_T)
+    ok = client.post("/v1/voice/transcribe", files={"file": ("rec.m4a", b"abc", "audio/m4a")}, headers=H)
+    assert ok.status_code == 200 and ok.json() == {"text": "I felt calm today."}
+    assert client.post("/v1/voice/transcribe", files={"file": ("rec.exe", b"abc")}, headers=H).status_code == 415
+    assert client.post("/v1/voice/transcribe", files={"file": ("rec.m4a", b"")}, headers=H).status_code == 400
+    llm.set_client(None)
+    assert client.post("/v1/voice/transcribe", files={"file": ("rec.m4a", b"abc")}, headers=H).status_code == 503

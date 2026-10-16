@@ -14,8 +14,8 @@ from fastapi import FastAPI
 
 def register(app: FastAPI) -> None:
     from escape_api.legacy_guard import LegacyAuthGuard
-    from escape_api.routers import journal, me, meta, mood, privacy, selfcare, soundscapes
+    from escape_api.routers import journal, me, meta, mood, privacy, selfcare, soundscapes, voice
 
-    for r in (meta.router, me.router, mood.router, journal.router, soundscapes.router, selfcare.router, privacy.router):
+    for r in (meta.router, me.router, mood.router, journal.router, soundscapes.router, selfcare.router, privacy.router, voice.router):
         app.include_router(r)
     app.add_middleware(LegacyAuthGuard)
