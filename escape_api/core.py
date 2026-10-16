@@ -189,20 +189,26 @@ def family_meta(family: str) -> Dict[str, Any]:
     return dataset("mood_words")["families"].get(family, dataset("mood_words")["families"]["mixed"])
 
 
+# The journal / Mood Stats orb uses the same loops as Soundscapes, so the two look the same.
+# Each tone maps to one cell of the Soundscapes Mood Orb grid (mode, energy, texture).
+TONE_LOOP = {"bright": ("picks", 0.85, 0.5), "calm": ("calm", 0.5, 0.15), "tender": ("calm", 0.15, 0.5),
+             "restless": ("focus", 0.85, 0.85), "heavy": ("sleep", 0.15, 0.85), "mixed": ("picks", 0.5, 0.5)}
+
+
 def orb_assets(tone: str, night: bool = False) -> Dict[str, str]:
-    base = cfg().asset_base_url.rstrip("/") + "/journal"
-    stem = f"{base}/journal_orb_{tone}"
-    wash = {"bright": "calmwash", "calm": "calmwash", "tender": "calmwash",
-            "restless": "warmwash", "heavy": "coolwash", "mixed": "coolwash"}[tone]
-    bg = f"{base}/journal_bg_{wash}{'_night' if night else ''}"
+    mode, energy, texture = TONE_LOOP.get(tone, TONE_LOOP["mixed"])
+    loop = soundscape_loop(mode, energy, texture)
+    grid_offline = soundscape_loop(mode, 0.5, 0.5)["offline"]  # one offline loop per mode
     return {
         "tone": tone,
         "accent": dataset("mood_words")["tones"][tone]["accent"],
-        "orbHevc": f"{stem}_hevc.mp4", "orbH264": f"{stem}_h264.mp4",
-        "orbPoster": f"{stem}_poster.webp", "orbCard": f"{stem}_card.webp",
-        "background": wash + ("_night" if night else ""),
-        "bgHevc": f"{bg}_hevc.mp4", "bgH264": f"{bg}_h264.mp4",
-        "bgPoster": f"{bg}_poster.webp", "bgOffline": f"{bg}_540_offline.mp4",
+        # Only HEVC loops are published; iOS and modern Android both play them.
+        "orbHevc": loop["hevc"], "orbH264": loop["hevc"],
+        "orbPoster": loop["poster"], "orbCard": loop["card"],
+        "background": mode + ("_night" if night else ""),
+        "bgHevc": loop["hevc"], "bgH264": loop["hevc"],
+        "bgPoster": loop["poster"], "bgOffline": grid_offline,
+        "loop": loop["name"],
         "night": night,
     }
 
@@ -211,11 +217,13 @@ def soundscape_loop(mode: str, energy: float, texture: float, night: bool = Fals
     """Nearest of the 36 Mood Orb loops: escape_{mode}_e{XX}_t{XX}_v{N}."""
     m = mode if mode in ("focus", "calm", "sleep", "picks") else "picks"
     snap = lambda v: min((15, 50, 85), key=lambda c: abs(c / 100 - v))  # noqa: E731
-    name = f"escape_{m}_e{snap(energy):02d}_t{snap(texture):02d}_v{version}{'_night' if night else ''}"
+    # Published loops: 36 cells as HEVC + poster + card, one 540p offline loop per mode. There are no
+    # separate night or H.264 renders yet, so `night` keeps the day loop and h264 points at HEVC.
+    name = f"escape_{m}_e{snap(energy):02d}_t{snap(texture):02d}_v{version}"
     base = cfg().asset_base_url.rstrip("/") + "/soundscapes/loops"
-    return {"name": name, "hevc": f"{base}/{name}_hevc.mp4", "h264": f"{base}/{name}_h264.mp4",
+    return {"name": name, "hevc": f"{base}/{name}_hevc.mp4", "h264": f"{base}/{name}_hevc.mp4",
             "poster": f"{base}/{name}_poster.webp", "card": f"{base}/{name}_card.webp",
-            "offline": f"{base}/{name}_540_offline.mp4"}
+            "offline": f"{base}/escape_{m}_e50_t50_v{version}_540_offline.mp4"}
 
 
 # ───────────────────────── user state: streak, coins, energy ─────────────────────────

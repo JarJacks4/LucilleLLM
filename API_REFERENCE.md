@@ -420,7 +420,7 @@ Response (201):
   "checkin": { "id": "mood_…", "word": "Restless", "family": "restless", "tone": "restless",
                "valence": 0.31, "energy": 0.77, "inputs": ["word","tap","voice","pulse"], "localDay": "2026-10-09" },
   "lucille": { "word": "Restless", "line": "Restless. Your system is running fast. We can slow it down together.", "aiGenerated": false },
-  "orb": { "tone": "restless", "accent": "#EF7702", "orbHevc": "…/journal/journal_orb_restless_hevc.mp4",
+  "orb": { "tone": "restless", "accent": "#EF7702", "orbHevc": "…/soundscapes/loops/escape_focus_e85_t85_v3_hevc.mp4",
            "orbH264": "…_h264.mp4", "orbPoster": "…_poster.webp", "bgHevc": "…/journal_bg_warmwash_hevc.mp4", "night": false },
   "suggestions": [ { "activityId": "breath_box", "title": "Box Breathing", "minutes": 4,
                      "deeplink": { "route": "BoxBreathingGoalPage", "path": "/boxBreathingGoalPage", "url": "escape://boxBreathingGoalPage" } } ],
