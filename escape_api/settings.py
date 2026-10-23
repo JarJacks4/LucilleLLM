@@ -55,6 +55,48 @@ class Settings:
         self.plan_provider = os.getenv("PLAN_PROVIDER", "catalog")
         self.anthropic_model = os.getenv("ANTHROPIC_PLAN_MODEL", "claude-haiku-4-5")
 
+        # ── Lucille edition ────────────────────────────────────────────────
+        # 'openai' keeps today's app exactly as it is. 'claude' additionally mounts
+        # /v2/lucille/* and /v2/plans/* (the Claude edition). Nothing is ever mixed.
+        self.lucille_edition = (os.getenv("LUCILLE_EDITION", "openai") or "openai").strip().lower()
+
+        # Claude models (platform.claude.com, Oct 2026). 1M context, 128K max output.
+        self.claude_model = os.getenv("LUCILLE_CLAUDE_MODEL", "claude-opus-5-5")
+        self.claude_fast_model = os.getenv("LUCILLE_CLAUDE_FAST_MODEL", "claude-haiku-5-5")
+        self.claude_cheap_model = os.getenv("LUCILLE_CLAUDE_CHEAP_MODEL", "claude-sonnet-5-5")
+        self.claude_long_model = os.getenv("LUCILLE_CLAUDE_LONG_MODEL", "claude-fable-5-1")
+        self.claude_long_reasoning = _b("LUCILLE_CLAUDE_LONG_REASONING", False)  # opt-in, pricier
+
+        self.claude_max_tokens = _i("LUCILLE_CLAUDE_MAX_TOKENS", 1600)
+        self.claude_timeout_s = _i("LUCILLE_CLAUDE_TIMEOUT_S", 60)
+        self.claude_connect_timeout_s = _i("LUCILLE_CLAUDE_CONNECT_TIMEOUT_S", 10)
+        self.claude_max_retries = _i("LUCILLE_CLAUDE_MAX_RETRIES", 2)
+        self.claude_base_url = os.getenv("ANTHROPIC_BASE_URL", "https://api.anthropic.com")
+        self.claude_api_version = os.getenv("ANTHROPIC_API_VERSION", "2023-06-01")
+
+        # Memory since inception: verbatim window + fold-down threshold.
+        self.claude_verbatim_turns = _i("LUCILLE_CLAUDE_VERBATIM_TURNS", 40)
+        self.claude_memory_top_k = _i("LUCILLE_CLAUDE_MEMORY_TOP_K", 20)
+        self.claude_context_budget_tokens = _i("LUCILLE_CLAUDE_CONTEXT_BUDGET", 400_000)
+        self.claude_tool_rounds = _i("LUCILLE_CLAUDE_TOOL_ROUNDS", 4)
+        self.claude_memory_write = _b("LUCILLE_CLAUDE_MEMORY_WRITE", True)
+
+        # Per-user daily quotas for the Claude edition.
+        self.quota_claude_turn_per_day = _i("QUOTA_CLAUDE_TURN_PER_DAY", 60)
+        self.quota_claude_plan_per_day = _i("QUOTA_CLAUDE_PLAN_PER_DAY", 4)
+        self.quota_claude_doc_per_day = _i("QUOTA_CLAUDE_DOC_PER_DAY", 10)
+
+        # Plan documents: GCS bucket + signed-URL lifetime. Empty bucket = served
+        # from this API behind the caller's token instead (no public object).
+        self.plan_docs_bucket = os.getenv("LUCILLE_PLAN_DOCS_BUCKET", "")
+        self.plan_docs_ttl_hours = _i("LUCILLE_PLAN_DOCS_TTL_HOURS", 24)
+
+        # AI disclosure cadence (contract): adults 3h / 12 turns, teens 1h / 5 turns.
+        self.disclosure_hours_adult = _i("DISCLOSURE_HOURS_ADULT", 3)
+        self.disclosure_turns_adult = _i("DISCLOSURE_TURNS_ADULT", 12)
+        self.disclosure_hours_teen = _i("DISCLOSURE_HOURS_TEEN", 1)
+        self.disclosure_turns_teen = _i("DISCLOSURE_TURNS_TEEN", 5)
+
         # Coins
         self.energy_level_step = _i("ENERGY_LEVEL_STEP_COINS", 1000)
 

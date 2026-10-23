@@ -31,13 +31,22 @@ def config():
         "version": API_VERSION,
         "features": {"journalV2": True, "moodStatsV2": True, "soundscapesV2": True, "selfCarePlans": True,
                      "compose": bool(s.render_url), "claudePlans": s.plan_provider == "claude",
-                     "weather": s.weather_provider != "none"},
+                     "weather": s.weather_provider != "none",
+                     # Which Lucille this deployment serves. 'claude' also mounts
+                     # /v2/lucille/* and /v2/plans/*; 'openai' keeps the legacy /chat tab.
+                     "lucilleEdition": s.lucille_edition,
+                     "lucilleClaude": s.lucille_edition == "claude",
+                     "claudeConfigured": bool(os.getenv("ANTHROPIC_API_KEY")),
+                     "planDocuments": s.lucille_edition == "claude"},
         "enforceConsent": s.enforce_consent,
         "assetBaseUrl": s.asset_base_url, "audioBaseUrl": s.audio_base_url,
         "deeplinkScheme": core.dataset("deeplinks")["scheme"],
         "aiDisclosure": core.AI_DISCLOSURE,
         "energyLevelStep": s.energy_level_step,
-        "limits": {"reflectPerDay": s.quota_reflect_per_day, "composePerDayFree": s.quota_compose_per_day_free},
+        "limits": {"reflectPerDay": s.quota_reflect_per_day, "composePerDayFree": s.quota_compose_per_day_free,
+                   "claudeTurnsPerDay": s.quota_claude_turn_per_day,
+                   "claudePlansPerDay": s.quota_claude_plan_per_day,
+                   "planDocumentsPerDay": s.quota_claude_doc_per_day},
     }
 
 

@@ -146,7 +146,8 @@ async def reflect(e: Dict[str, Any], word: str, family: str, allow_llm: bool) ->
            if need else "'reframe': null. ")
         + "'themes': up to 3 lowercase single words. "
         "'soundscapeCategory': one of music_meditations, vaporwave, jazz, nature, binaural_beats, brainwave_music, "
-        "raw_frequencies, sleep_ambient, depression_anxiety, chosen to suit how they feel now. "
+        "raw_frequencies, sleep_ambient, depression_anxiety, dreamdrift, nature_elements, chosen to suit how "
+        "they feel now. "
         "Return exactly these keys: reflection, reframe, themes, soundscapeCategory.\n"
         'Example (guided, mood Restless): {"reflection": "You named a lot pulling at you at once: the deadline, the '
         'inbox, the call you keep putting off. Writing it down already turned a blur into a short list.", '

@@ -212,8 +212,14 @@ def test_soundscapes_categories_catalog_pick_session(client):
     consent(client)
     cats = client.get("/v1/soundscapes/categories").json()["categories"]
     assert [c["id"] for c in cats] == ["music_meditations", "vaporwave", "jazz", "nature", "binaural_beats",
-                                       "brainwave_music", "raw_frequencies", "sleep_ambient", "depression_anxiety"]
+                                       "brainwave_music", "raw_frequencies", "sleep_ambient", "depression_anxiety",
+                                       "dreamdrift", "nature_elements"]
     assert all(c["trackCount"] >= 4 for c in cats)
+    # every declared category x mode pair is playable
+    for c in cats:
+        for m in c["modes"]:
+            assert client.get(f"/v1/soundscapes/catalog?category={c['id']}&mode={m}",
+                              headers=H).json()["count"] >= 2
     items = client.get("/v1/soundscapes/catalog?category=raw_frequencies", headers=H).json()["items"]
     assert items[0]["frequencyHz"] == 174 and len(items[0]["audio"]["bodies"]) == 4
     t = client.get("/v1/soundscapes/tracks/depression_anxiety_01", headers=H).json()
@@ -221,7 +227,9 @@ def test_soundscapes_categories_catalog_pick_session(client):
     pick = client.post("/v1/soundscapes/pick", json={"mode": "picks"}, headers=H).json()
     assert pick["mode"] in ("focus", "calm", "sleep") and pick["track"]["visual"]["name"].startswith("escape_")
     home = client.get("/v1/soundscapes/home", headers=H).json()
-    assert len(home["rows"]) == 9 and home["dailyDrop"]["track"]["id"]
+    assert len(home["rows"]) == 11 and home["dailyDrop"]["track"]["id"]
+    mv = client.post("/v1/soundscapes/pick", json={"mode": "move"}, headers=H).json()
+    assert mv["track"]["mode"] == "move" and 100 <= mv["track"]["bpm"] <= 130
     s = client.post("/v1/soundscapes/sessions", json={"trackId": "nature_01", "mode": "calm", "moodBefore": "Anxious"}, headers=H).json()["session"]
     done = client.post(f"/v1/soundscapes/sessions/{s['id']}/complete", json={"minutes": 22, "moodAfter": "Calm"}, headers=H).json()
     assert done["coinsAwarded"] == 4 and done["moodBefore"]["word"] == "Anxious" and done["moodAfter"]["word"] == "Calm"
@@ -406,3 +414,128 @@ def test_voice_transcribe_uses_server_side_key_and_validates(client):
     assert client.post("/v1/voice/transcribe", files={"file": ("rec.m4a", b"")}, headers=H).status_code == 400
     llm.set_client(None)
     assert client.post("/v1/voice/transcribe", files={"file": ("rec.m4a", b"abc")}, headers=H).status_code == 503
+
+
+# ───────────────────────── Escape v6: sessions, Lucille's voice, voice chat ─────────────────────────
+
+def test_session_complete_awards_capped_coins_bonus_and_streak_once(client):
+    body = {"area": "mind", "sessionId": "s-0001", "title": "Box Breathing", "minutes": 4, "moodBefore": "restless"}
+    r = client.post("/v1/sessions/complete", json=body, headers=H)
+    assert r.status_code == 201, r.text
+    j = r.json()
+    assert j["coinsAwarded"] == 25 and j["dailyBonus"] == 15 and j["streakDays"] == 1 and j["coins"] == 25
+    # Same session again (offline retry): no double reward.
+    again = client.post("/v1/sessions/complete", json=body, headers=H).json()
+    assert again["duplicate"] is True and again["coinsAwarded"] == 0 and again["coins"] == 25
+    # Second session today: no bonus. Under a minute: streak only.
+    r2 = client.post("/v1/sessions/complete", json=dict(body, sessionId="s-0002"), headers=H).json()
+    assert r2["coinsAwarded"] == 10 and r2["dailyBonus"] == 0
+    r3 = client.post("/v1/sessions/complete", json=dict(body, sessionId="s-0003", minutes=0), headers=H).json()
+    assert r3["coinsAwarded"] == 0
+    # Daily cap (6 sessions).
+    for i in range(4, 12):
+        client.post("/v1/sessions/complete", json=dict(body, sessionId=f"s-{i:04d}"), headers=H)
+    st = client.get("/v1/me/progress", headers=H).json()
+    assert st["coins"] == 15 + 6 * 10
+    bad = client.post("/v1/sessions/complete", json=dict(body, area="community", sessionId="s-x1"), headers=H)
+    assert bad.status_code == 422
+
+
+def test_speak_returns_lucilles_voice_and_caches(client):
+    from escape_api import tts
+    calls = []
+
+    async def fake(text):
+        calls.append(text)
+        return b"ID3mp3", "openai", "nova"
+
+    tts.set_override(fake)
+    try:
+        r = client.post("/v1/voice/speak", json={"text": "Breathe in for four."}, headers=H)
+        assert r.status_code == 200, r.text
+        j = r.json()
+        assert j["audioMime"] == "audio/mpeg" and j["clonedVoice"] is False
+        import base64
+        assert base64.b64decode(j["audio"]) == b"ID3mp3"
+        client.post("/v1/voice/speak", json={"text": "Breathe in for four."}, headers=H)
+        assert calls == ["Breathe in for four."]          # second call served from cache
+        assert client.post("/v1/voice/speak", json={"text": ""}, headers=H).status_code == 422
+
+        async def broken(text):
+            raise RuntimeError("down")
+
+        tts.set_override(broken)
+        assert client.post("/v1/voice/speak", json={"text": "Hello"}, headers=H).status_code == 503
+    finally:
+        tts.set_override(None)
+
+
+def test_converse_transcribes_replies_and_speaks(client):
+    from escape_api import tts
+    consent(client)
+
+    class _T:
+        class audio:
+            class transcriptions:
+                @staticmethod
+                async def create(**kw):
+                    return type("R", (), {"text": "I feel a bit restless tonight"})()
+
+    async def fake_voice(text):
+        return b"mp3", "openai", "nova"
+
+    llm.set_client(_T)          # no chat.completions -> the v1 LLM falls back to its safe default reply
+    tts.set_override(fake_voice)
+    try:
+        r = client.post("/v1/voice/converse", files={"file": ("turn.m4a", b"abc", "audio/m4a")},
+                        data={"session_id": ""}, headers=H)
+        assert r.status_code == 200, r.text
+        j = r.json()
+        assert j["transcript"] == "I feel a bit restless tonight"
+        assert j["reply"] and j["audio"] and j["distress"] is False and j["sessionId"]
+    finally:
+        tts.set_override(None)
+        llm.set_client(None)
+
+
+def test_converse_distress_never_reaches_the_model(client):
+    from escape_api import tts
+    consent(client)
+
+    class _T:
+        class audio:
+            class transcriptions:
+                @staticmethod
+                async def create(**kw):
+                    return type("R", (), {"text": "I want to kill myself"})()
+
+        class chat:
+            class completions:
+                @staticmethod
+                async def create(**kw):
+                    raise AssertionError("distress text must not be sent to the model")
+
+    async def fake_voice(text):
+        return b"mp3", "openai", "nova"
+
+    llm.set_client(_T)
+    tts.set_override(fake_voice)
+    try:
+        j = client.post("/v1/voice/converse", files={"file": ("turn.m4a", b"abc", "audio/m4a")}, headers=H).json()
+        assert j["distress"] is True and "988" in j["reply"] and j["audio"]
+    finally:
+        tts.set_override(None)
+        llm.set_client(None)
+
+
+def test_converse_requires_voice_consent(client):
+    r = client.post("/v1/voice/converse", files={"file": ("turn.m4a", b"abc", "audio/m4a")}, headers=H)
+    assert r.status_code == 403 and r.json()["detail"]["purpose"] == "voice"
+
+
+def test_home_plan_items_carry_plan_id(client):
+    consent(client)
+    p = client.post("/v1/selfcare/plans", json={"goals": ["less_stress"], "minutesPerDay": 15, "days": 7}, headers=H)
+    assert p.status_code in (200, 201), p.text
+    items = client.get("/v1/home", headers=H).json()["todayPlan"]
+    assert items and all(i["planId"] == p.json()["plan"]["id"] for i in items)

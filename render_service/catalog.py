@@ -23,7 +23,20 @@ from render_service.synth import Recipe, render_segment
 
 CATALOG = Path(__file__).resolve().parents[1] / "escape_api" / "data" / "soundscape_catalog.json"
 
-NATURE_BED = {"rain": "rain_roof", "ocean": "ocean", "forest": "forest", "stream": "stream", "fire": "fire"}
+# Title keyword -> ambience bed, used for the two field-recording categories (nature, nature_elements).
+NATURE_BED = {
+    "rain": "rain_roof", "ocean": "ocean", "forest": "forest", "stream": "stream", "fire": "fire",
+    "thunder": "rain_roof", "storm": "rain_roof", "monsoon": "rain_roof", "drizzle": "rain_roof",
+    "tide": "ocean", "coast": "ocean", "water": "ocean", "underwater": "ocean", "harbor": "ocean",
+    "river": "stream", "creek": "stream", "waterfall": "stream", "drip": "stream", "geyser": "stream",
+    "marsh": "stream", "ember": "fire", "fireplace": "fire", "driftwood": "fire",
+    "wind": "glass_wind", "snow": "glass_wind", "glacier": "glass_wind", "ice": "glass_wind",
+    "desert": "glass_wind", "sandstorm": "glass_wind", "thermal": "glass_wind", "updraft": "glass_wind",
+    "salt": "soft_air", "stone": "soft_air", "cave": "soft_air", "silence": "soft_air",
+    "pine": "forest", "canopy": "forest", "meadow": "forest", "aspen": "forest", "trail": "forest",
+    "crickets": "forest", "chorus": "forest", "grass": "forest",
+}
+BED_CATEGORIES = ("nature", "nature_elements")
 
 STYLE = {
     "music_meditations": dict(style="bowls", melody="bowls", ambience="soft_air", pulse=None, scale="major_pentatonic", reverb=0.8),
@@ -35,6 +48,8 @@ STYLE = {
     "raw_frequencies": dict(style="drone", melody=None, ambience=None, pulse=None, scale="major_pentatonic", reverb=0.4),
     "sleep_ambient": dict(style="ambient", melody="soft_pads", ambience="soft_air", pulse=None, scale="major_pentatonic", reverb=0.85),
     "depression_anxiety": dict(style="ambient", melody="felt_keys", ambience="soft_air", pulse="slow_heartbeat", scale="major_pentatonic", reverb=0.7),
+    "dreamdrift": dict(style="vaporwave", melody="soft_pads", ambience="soft_air", pulse="soft_kick", scale="lydian", reverb=0.8),
+    "nature_elements": dict(style="ambient", melody="none", ambience="soft_air", pulse=None, scale="major_pentatonic", reverb=0.3),
 }
 LUFS = {"focus": -16, "calm": -18, "sleep": -20, "move": -14}
 
@@ -43,7 +58,7 @@ def recipe_for(track: dict) -> dict:
     st = STYLE[track["category"]]
     mf = track["moodField"]
     amb = st["ambience"]
-    if track["category"] == "nature":
+    if track["category"] in BED_CATEGORIES:
         amb = next((v for k, v in NATURE_BED.items() if k in track["title"].lower()), "forest")
     bw = track.get("brainwave")
     return {
