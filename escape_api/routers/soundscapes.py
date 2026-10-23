@@ -26,7 +26,7 @@ router = APIRouter(prefix="/v1/soundscapes", tags=["v1 · soundscapes"])
 
 Mode = Literal["picks", "focus", "calm", "sleep", "move"]
 CategoryId = Literal["music_meditations", "vaporwave", "jazz", "nature", "binaural_beats", "brainwave_music",
-                     "raw_frequencies", "sleep_ambient", "depression_anxiety"]
+                     "raw_frequencies", "sleep_ambient", "depression_anxiety", "dreamdrift", "nature_elements"]
 
 
 class MoodField(BaseModel):

@@ -22,6 +22,10 @@ scipy>=1.11  # render_service tests
 firebase_admin>=6.2.0
 google-cloud-secret-manager>=2.20.2
 
+# Plan documents (Lucille Claude edition: /v2/plans/{id}/document)
+reportlab==4.2.5          # PDF
+python-docx==1.1.2        # DOCX (optional at runtime; the route answers 503 if absent)
+
 # Monitoring
 psutil>=5.9.0
 
