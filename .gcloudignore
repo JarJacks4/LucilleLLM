@@ -15,3 +15,8 @@
 
 node_modules
 #!include:.gitignore
+
+# Cloud Build runs pytest from the uploaded source tree.
+# Preserve test modules even when local ignore rules change.
+!tests/
+!tests/**/*.py
