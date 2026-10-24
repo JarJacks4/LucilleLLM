@@ -20,3 +20,13 @@ node_modules
 # Preserve test modules even when local ignore rules change.
 !tests/
 !tests/**/*.py
+
+# Runtime application catalogs are tracked JSON, not secrets.
+# .gitignore excludes *.json broadly; restore ONLY these six public datasets.
+!escape_api/data/
+!escape_api/data/deeplinks.json
+!escape_api/data/journal_prompts.json
+!escape_api/data/mood_keywords_derived.json
+!escape_api/data/mood_words.json
+!escape_api/data/selfcare_activities.json
+!escape_api/data/soundscape_catalog.json
