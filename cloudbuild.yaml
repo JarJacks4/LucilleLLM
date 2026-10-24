@@ -1,9 +1,4 @@
 steps:
-<<<<<<< HEAD
-  # Build the container image
-  - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/lucillellm2', '.']
-=======
   # Deploys only to the Escape Firebase project (app sign-in + Firestore live there).
   - name: 'gcr.io/cloud-builders/gcloud'
     entrypoint: 'bash'
@@ -36,7 +31,6 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/lucille-repo/lucille:$BUILD_ID', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/lucille-repo/lucille:latest', '.']
     waitFor: ['test']
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
   
   # Push the container image to Container Registry
   - name: 'gcr.io/cloud-builders/docker'
@@ -58,10 +52,6 @@ steps:
       - '--max-instances=10'
       - '--timeout=600'
       - '--cpu-boost'
-<<<<<<< HEAD
-      - '--set-env-vars=ENVIRONMENT=production'
-      - '--set-secrets=OPENAI_API_KEY=openai-api-key:latest'
-=======
       # Environment variables — add your production web domain to CORS_ALLOWED_ORIGINS
       # before launching the web frontend. GCS_AUDIO_BUCKET is needed for soundscapes.
       - '--concurrency=80'
@@ -71,4 +61,3 @@ steps:
       # Secrets from Google Secret Manager (never in env vars)
       # internal-service-key is created by scripts/gcp/setup_deploy_access.sh (Cloud Scheduler jobs use it)
       - '--set-secrets=OPENAI_API_KEY=openai-api-key:latest,INTERNAL_SERVICE_KEY=internal-service-key:latest,LUCILLE_RENDER_API_KEY=lucille-render-api-key:latest,LUCILLE_RENDER_CALLBACK_SECRET=lucille-render-callback-secret:latest'
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
