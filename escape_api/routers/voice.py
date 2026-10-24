@@ -86,7 +86,9 @@ async def speak(body: SpeakIn, c: Caller = Depends(caller)):
         raise HTTPException(429, "Daily voice limit reached.")
     try:
         audio, provider, voice = await tts.synthesize(body.text)
-    except Exception:
+    except Exception as exc:
+        # Do not log user speech text or the upstream exception body.
+        logger.warning("speak TTS unavailable: %s", type(exc).__name__)
         raise HTTPException(503, "Voice generation unavailable.")
     return {"audio": tts.b64(audio), "audioMime": "audio/mpeg",
             "voiceProvider": provider, "voice": voice, "clonedVoice": False}
@@ -115,7 +117,10 @@ async def converse(file: UploadFile = File(...), session_id: str = Form(""),
     try:
         audio, provider, voice = await tts.synthesize(reply)
         encoded = tts.b64(audio)
-    except Exception:
+    except Exception as exc:
+        # Preserve captions-only fallback, but make TTS failures visible in
+        # server logs without recording sensitive transcript/reply content.
+        logger.warning("converse TTS unavailable: %s", type(exc).__name__)
         encoded = None
     return {"transcript": transcript, "reply": reply, "audio": encoded,
             "audioMime": "audio/mpeg" if encoded else None,

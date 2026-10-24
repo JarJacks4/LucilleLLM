@@ -38,7 +38,10 @@ async def synthesize(text: str):
         response = await client.audio.speech.create(
             model=os.getenv("LUCILLE_TTS_MODEL", "gpt-4o-mini-tts"),
             voice=voice, input=text, response_format="mp3")
-        audio = await response.read() if hasattr(response, "read") else response.content
+        # AsyncOpenAI returns HttpxBinaryResponseContent. Its read() method
+        # is synchronous (returns bytes), so awaiting it raises TypeError and
+        # caused /v1/voice/converse to silently return audio=None. Use aread().
+        audio = await response.aread() if hasattr(response, "aread") else response.content
         result = (audio, "openai", voice)
     if not result[0]:
         raise RuntimeError("TTS returned empty audio")
