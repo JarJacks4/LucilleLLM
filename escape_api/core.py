@@ -248,6 +248,8 @@ COIN_RULES: Dict[str, Tuple[int, int]] = {
     "listening_5min": (1, 24),
     "plan_item": (10, 6),
     "energy_scan": (10, 1),
+    "session_complete": (10, 6),
+    "session_daily_bonus": (15, 1),
 }
 
 
