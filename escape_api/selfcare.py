@@ -230,4 +230,5 @@ def today_items(plan: Optional[Dict[str, Any]], tz: str) -> List[Dict[str, Any]]
     if not plan:
         return []
     today = core.local_day(tz)
-    return next((d["items"] for d in plan["days"] if d["date"] == today), [])
+    items = next((d["items"] for d in plan["days"] if d["date"] == today), [])
+    return [{**item, "planId": plan["id"]} for item in items]
