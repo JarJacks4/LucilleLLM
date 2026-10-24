@@ -16,14 +16,9 @@ Streaming Enhancement (suyash-streaming-chat branch):
 - Provides ChatGPT-like typing experience with RAG integration
 """
 
-<<<<<<< HEAD
-from fastapi import FastAPI, Request, HTTPException, status
-from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse
-=======
 from fastapi.exceptions import RequestValidationError
 from fastapi import Depends, FastAPI, Request, HTTPException, status, File, UploadFile
 from fastapi.responses import JSONResponse, HTMLResponse, StreamingResponse, FileResponse
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
 from fastapi.encoders import jsonable_encoder
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ValidationError
@@ -54,8 +49,6 @@ import httpx
 
 # Local imports
 from firebase_service import get_firebase_service
-<<<<<<< HEAD
-=======
 from user_service import get_user_service
 from emotion_service import get_emotion_service
 from memory_service import get_memory_service
@@ -119,14 +112,10 @@ from models import (
     CompleteAssessmentResponse, AssessmentHistoryResponse, WellnessScore,
 )
 
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
 
 # Load environment variables
 load_dotenv()
 
-<<<<<<< HEAD
-# Configure logging for production (Cloud Run compatible)
-=======
 # Configure structured logging for production (Cloud Run / Cloud Logging compatible)
 
 
@@ -161,7 +150,6 @@ if _log_config.LOG_FORMAT == "json":
 else:
     _log_handler.setFormatter(logging.Formatter(
         '%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -240,12 +228,6 @@ async_openai_client = AsyncOpenAI(
     http_client=_httpx_async_client,
 )
 
-<<<<<<< HEAD
-# Configuration
-OPENAI_MODEL = "gpt-4o-mini"
-EMBEDDING_MODEL = "text-embedding-3-small"
-FAISS_INDEX_PATH = './faiss_vecdb'
-=======
 # Configuration (from environment variables via config service)
 _app_config = get_config()
 OPENAI_MODEL = _app_config.OPENAI_MODEL
@@ -289,7 +271,6 @@ try:
 except Exception as _esc_err:
     print(
         f"Warning: Could not inject OpenAI client into escalation service: {_esc_err}")
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -323,8 +304,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-<<<<<<< HEAD
-=======
 # Rate limiting, metrics, and privacy middleware
 # Starlette order: last added = outermost.
 # PrivacyMiddleware -> MetricsMiddleware -> RateLimitMiddleware (innermost)
@@ -381,7 +360,6 @@ async def startup_event():
     logger.info(f"Startup complete in {elapsed:.2f}s")
 
 
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
 # Initialize embeddings and vector store
 embeddings_model = OpenAIEmbeddings(
     model=EMBEDDING_MODEL,
@@ -532,8 +510,6 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
         # Initialize Firebase service
         firebase_service = get_firebase_service()
 
-<<<<<<< HEAD
-=======
         # Load user profile if user_id is provided (with cache)
         user_profile_text = ""
         comm_pref = "empathetic"
@@ -718,7 +694,6 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
             except Exception as e:
                 logger.warning(f"⚠️ Memory retrieval failed, continuing: {e}")
 
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
         # Load existing session from Firebase if it exists
         try:
             existing_session = firebase_service.get_chat_session(session_id)
@@ -734,16 +709,6 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
             existing_session = None
 
         # 🔍 RAG: Retrieve relevant context from vector store
-<<<<<<< HEAD
-        retrieved_context = retrieve_relevant_context(prompt, k=5, similarity_threshold=1.1)
-        
-        # Create system prompt with RAG context, summary, and base instructions
-        system_prompt = (
-            "You are Lucille, a self-care expert and helpful assistant. "
-            "Always format your responses in **Markdown** using bold, italic, lists, and line breaks for better readability. "
-            "You are NOT a medical doctor, so always add a disclaimer where needed and refrain from giving medical advice. "
-            "If someone is suicidal, refer them to suicide helplines immediately."
-=======
         retrieved_context = retrieve_relevant_context(
             prompt, k=5, similarity_threshold=1.1)
 
@@ -828,7 +793,6 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
             cultural_context_text=cultural_context_text,
             health_context_text=health_context_text,
             safety_override_text=safety_override_text,
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
         )
         
         # Add retrieved context if available
@@ -872,9 +836,6 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
                 max_tokens=1000,
                 temperature=0.7
             )
-<<<<<<< HEAD
-            bot_response = response.choices[0].message.content
-=======
             if is_fine_tuned:
                 logger.info(
                     f"FT A/B: user {request.user_id} -> fine-tuned model")
@@ -947,7 +908,6 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
                 )
 
             bot_response = response.choices[0].message.content or ""
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
         except APIConnectionError as e:
             print(f"❌ OpenAI network error: {e}")
             raise HTTPException(
@@ -961,8 +921,6 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
             raise HTTPException(
                 status_code=500, detail=f"OpenAI API error: {e}")
 
-<<<<<<< HEAD
-=======
         # ── Phase 9: Output Safety Validation ──
         try:
             bot_response, output_modified = safety_svc.validate_output(
@@ -1014,7 +972,6 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
             except Exception:
                 pass
 
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
         # Update chat history
         chat_history.add_user_message(prompt)
         chat_history.add_ai_message(bot_response)
@@ -1053,8 +1010,6 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
         except Exception as e:
             print(f"⚠️ Failed to store session in Firebase: {e}")
 
-<<<<<<< HEAD
-=======
         # Link session to user if user_id was provided
         if request.user_id:
             try:
@@ -1089,7 +1044,6 @@ async def chat(request: ChatRequest, user: dict = Depends(get_current_user)):
         except Exception as e:
             logger.warning(f"FT performance logging failed: {e}")
 
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
         payload = ChatResponse(
             session_id=session_id,
             response=bot_response,
@@ -1146,8 +1100,6 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
         # Initialize Firebase service
         firebase_service = get_firebase_service()
 
-<<<<<<< HEAD
-=======
         # Load user profile if user_id is provided (with cache)
         user_profile_text = ""
         comm_pref = "empathetic"
@@ -1351,7 +1303,6 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
             except Exception as e:
                 logger.warning(f"⚠️ Memory retrieval failed, continuing: {e}")
 
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
         # Load existing session from Firebase if it exists
         try:
             existing_session = firebase_service.get_chat_session(session_id)
@@ -1368,16 +1319,6 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
             existing_session = None
 
         # 🔍 RAG: Retrieve relevant context from vector store
-<<<<<<< HEAD
-        retrieved_context = retrieve_relevant_context(prompt, k=5, similarity_threshold=1.1)
-        
-        # Create system prompt with RAG context, summary, and base instructions
-        system_prompt = (
-            "You are Lucille, a self-care expert and helpful assistant. "
-            "Always format your responses in **Markdown** using bold, italic, lists, and line breaks for better readability. "
-            "You are NOT a medical doctor, so always add a disclaimer where needed and refrain from giving medical advice. "
-            "If someone is suicidal, refer them to suicide helplines immediately."
-=======
         retrieved_context = retrieve_relevant_context(
             prompt, k=5, similarity_threshold=1.1)
 
@@ -1462,7 +1403,6 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
             cultural_context_text=cultural_context_text,
             health_context_text=health_context_text,
             safety_override_text=safety_override_text,
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
         )
         
         # Add retrieved context if available
@@ -1503,24 +1443,6 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
             full_response = ""
             
             try:
-<<<<<<< HEAD
-                # Call OpenAI API with streaming enabled
-                stream = openai_client.chat.completions.create(
-                    model=OPENAI_MODEL,
-                    messages=messages,
-                    max_tokens=1000,
-                    temperature=0.7,
-                    stream=True  # Enable streaming
-                )
-                
-                # Stream tokens as they arrive
-                for chunk in stream:
-                    if chunk.choices[0].delta.content:
-                        token = chunk.choices[0].delta.content
-                        full_response += token
-                        
-                        # Send token as SSE event - CONSISTENT FORMAT for all messages
-=======
                 # Phase 1: Resolve tool calls (non-streaming)
                 agent_svc = get_chat_agent_service()
                 tool_defs = agent_svc.get_tool_definitions()
@@ -1594,7 +1516,6 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                     chunk_size = 4
                     for i in range(0, len(full_response), chunk_size):
                         token = full_response[i:i + chunk_size]
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
                         event_data = json.dumps({
                             "content": token,
                             "done": False,
@@ -1603,9 +1524,6 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                             "message_count": 0
                         })
                         yield f"data: {event_data}\n\n"
-<<<<<<< HEAD
-                
-=======
                 else:
                     # No content yet (rare edge case) — stream a fresh call without tools
                     stream = await async_openai_client.chat.completions.create(
@@ -1679,7 +1597,6 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                     except Exception:
                         pass
 
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
                 # Update chat history after streaming completes
                 chat_history.add_user_message(prompt)
                 chat_history.add_ai_message(full_response)
@@ -1697,10 +1614,6 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                         firebase_service.store_chat_session(
                             session_id, current_messages, current_summary)
                 except Exception as e:
-<<<<<<< HEAD
-                    logger.warning(f"⚠️ Failed to store session in Firebase: {e}")
-                
-=======
                     logger.warning(
                         f"⚠️ Failed to store session in Firebase: {e}")
 
@@ -1722,7 +1635,6 @@ async def chat_stream(request: ChatRequest, user: dict = Depends(get_current_use
                     except Exception as e:
                         logger.warning(f"⚠️ Memory extraction failed: {e}")
 
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
                 # Summarize if over token limit
                 full_text = f"{prompt} {full_response}"
                 if count_tokens(full_text) > 8000:
@@ -2037,8 +1949,6 @@ async def validate_session(session_id: str):
             }
         )
 
-<<<<<<< HEAD
-=======
 # ── User Profile Endpoints ──────────────────────────────
 
 
@@ -4588,7 +4498,6 @@ async def get_review(user_id: str, review_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
 # Exception handlers
 @app.exception_handler(ValidationError)
 async def validation_exception_handler(request: Request, exc: ValidationError):
@@ -4603,8 +4512,6 @@ async def validation_exception_handler(request: Request, exc: ValidationError):
         }
     )
 
-<<<<<<< HEAD
-=======
 # ── Assessment System Endpoints (Phase 21) ───────────────
 
 
@@ -4910,7 +4817,6 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
@@ -4925,11 +4831,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-<<<<<<< HEAD
-=======
     logger.error(
         f"Unhandled exception on {request.url.path}: {exc}", exc_info=True)
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
