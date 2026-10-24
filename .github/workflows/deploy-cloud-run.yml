@@ -37,6 +37,14 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - name: Validate production API entrypoint syntax
         run: python -m py_compile main.py
+      # Import the actual production Uvicorn entrypoint, not only escape_api's
+      # isolated pytest app. A dummy key avoids using production secrets.
+      # This catches missing/renamed LangChain symbols before Cloud Run rollout.
+      - name: Smoke-test production API import
+        env:
+          OPENAI_API_KEY: sk-ci-placeholder-not-a-real-key
+          ENVIRONMENT: test
+        run: timeout 120s python -c "from main import app; assert app.title == 'LucilleLLM API'"
       - run: python -m pytest tests -q
 
   deploy:
