@@ -124,6 +124,19 @@ jobs:
           URL=$(gcloud run services describe lucille --region us-central1 --format='value(status.url)')
           curl -fsS "$URL/health" > /dev/null
           curl -fsS "$URL/v1/health"
-          curl -fsS "$URL/v1/soundscapes/categories" | python -c "import json,sys; assert len(json.load(sys.stdin)['categories'])==9"
+          # Keep the production smoke check in sync with the 11-category v1 catalog.
+          # Validate exact IDs and non-empty inventories, not just a raw count.
+          curl -fsS "$URL/v1/soundscapes/categories" | python -c '
+          import json, sys
+          data = json.load(sys.stdin)
+          expected = ["music_meditations", "vaporwave", "jazz", "nature",
+                      "binaural_beats", "brainwave_music", "raw_frequencies",
+                      "sleep_ambient", "depression_anxiety", "dreamdrift",
+                      "nature_elements"]
+          actual = [category["id"] for category in data["categories"]]
+          assert actual == expected, f"Unexpected soundscape categories: {actual!r}"
+          assert all(category["trackCount"] >= 4 for category in data["categories"]), "Missing soundscape tracks"
+          print(f"Soundscapes OK: {len(actual)} categories")
+          '
           RURL=$(gcloud run services describe lucille-render --region us-central1 --format='value(status.url)')
           curl -fsS "$RURL/health"
