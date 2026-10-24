@@ -51,10 +51,64 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.GCP_PROJECT_ID }}
+      # --async avoids gcloud's Cloud Build *log streaming* permissions requirement.
+      # Query the build resource instead; only a confirmed SUCCESS allows the next step.
       - name: Deploy the render service (cloudbuild-render.yaml)
-        run: gcloud builds submit --config cloudbuild-render.yaml --project "${{ env.GCP_PROJECT_ID }}" .
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_ID=$(gcloud builds submit --async --config cloudbuild-render.yaml \
+            --project "$GCP_PROJECT_ID" --format="value(id)" .)
+          if [[ -z "$BUILD_ID" ]]; then
+            echo "::error::Cloud Build did not return a build ID"
+            exit 1
+          fi
+          echo "Render build: $BUILD_ID"
+          echo "https://console.cloud.google.com/cloud-build/builds/$BUILD_ID?project=$GCP_PROJECT_ID"
+          for attempt in {1..120}; do
+            STATUS=$(gcloud builds describe "$BUILD_ID" --project "$GCP_PROJECT_ID" --format="value(status)")
+            echo "Render build: $STATUS (poll $attempt/120)"
+            case "$STATUS" in
+              SUCCESS) break ;;
+              FAILURE|INTERNAL_ERROR|TIMEOUT|CANCELLED|EXPIRED)
+                echo "::error::Render build $BUILD_ID ended with $STATUS"
+                exit 1 ;;
+              QUEUED|PENDING|WORKING) sleep 15 ;;
+              *) echo "::error::Unexpected Cloud Build status: $STATUS"; exit 1 ;;
+            esac
+            if [[ "$attempt" -eq 120 ]]; then
+              echo "::error::Timed out waiting for render build $BUILD_ID"
+              exit 1
+            fi
+          done
       - name: Build, test and deploy the API (cloudbuild.yaml)
-        run: gcloud builds submit --config cloudbuild.yaml --project "${{ env.GCP_PROJECT_ID }}" .
+        shell: bash
+        run: |
+          set -euo pipefail
+          BUILD_ID=$(gcloud builds submit --async --config cloudbuild.yaml \
+            --project "$GCP_PROJECT_ID" --format="value(id)" .)
+          if [[ -z "$BUILD_ID" ]]; then
+            echo "::error::Cloud Build did not return a build ID"
+            exit 1
+          fi
+          echo "API build: $BUILD_ID"
+          echo "https://console.cloud.google.com/cloud-build/builds/$BUILD_ID?project=$GCP_PROJECT_ID"
+          for attempt in {1..120}; do
+            STATUS=$(gcloud builds describe "$BUILD_ID" --project "$GCP_PROJECT_ID" --format="value(status)")
+            echo "API build: $STATUS (poll $attempt/120)"
+            case "$STATUS" in
+              SUCCESS) break ;;
+              FAILURE|INTERNAL_ERROR|TIMEOUT|CANCELLED|EXPIRED)
+                echo "::error::API build $BUILD_ID ended with $STATUS"
+                exit 1 ;;
+              QUEUED|PENDING|WORKING) sleep 15 ;;
+              *) echo "::error::Unexpected Cloud Build status: $STATUS"; exit 1 ;;
+            esac
+            if [[ "$attempt" -eq 120 ]]; then
+              echo "::error::Timed out waiting for API build $BUILD_ID"
+              exit 1
+            fi
+          done
       - name: Smoke test
         run: |
           URL=$(gcloud run services describe lucille --region us-central1 --format='value(status.url)')
