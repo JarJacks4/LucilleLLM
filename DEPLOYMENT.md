@@ -11,8 +11,8 @@
 ### 1. Setup Google Cloud Project
 
 ```bash
-# Set your project (replace with your actual project ID)
-gcloud config set project YOUR_PROJECT_ID
+# Escape's project: app sign-in, Firestore and Cloud Run all live here
+gcloud config set project escape-self-care-505618
 
 # Verify you're authenticated
 gcloud auth list
@@ -28,7 +28,7 @@ cp .env.example .env
 
 # Edit .env with your actual values
 OPENAI_API_KEY=sk-your-openai-api-key-here
-GOOGLE_CLOUD_PROJECT=your-project-id
+GOOGLE_CLOUD_PROJECT=escape-self-care-505618
 ENVIRONMENT=production
 ```
 

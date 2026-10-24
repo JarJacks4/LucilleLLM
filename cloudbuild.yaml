@@ -1,20 +1,55 @@
 steps:
+<<<<<<< HEAD
   # Build the container image
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', 'gcr.io/$PROJECT_ID/lucillellm2', '.']
+=======
+  # Deploys only to the Escape Firebase project (app sign-in + Firestore live there).
+  - name: 'gcr.io/cloud-builders/gcloud'
+    entrypoint: 'bash'
+    args: ['-c', '[ "$PROJECT_ID" = "escape-self-care-505618" ] || { echo "Refusing to deploy to $PROJECT_ID (expected escape-self-care-505618)"; exit 1; }']
+    id: 'project-guard'
+  # Run tests before building. Tests MUST pass — failures block the deploy.
+  - name: 'python:3.12-slim'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -e
+        pip install --quiet -r requirements.txt pytest pytest-asyncio httpx
+        python -m pytest tests/ -v --tb=short
+    id: 'test'
+
+  # Build the container image.
+  # Registry/service/region must match the RUNNING production service:
+  #   service lucille, region us-central1, Artifact Registry lucille-repo.
+  # This previously built gcr.io/$PROJECT_ID/lucillellm2 and deployed a
+  # `lucillellm2` service to us-east4 — a service that does not exist in
+  # this project, so a deploy would have silently created a second app and
+  # left production untouched.
+  #
+  # Tagged with $BUILD_ID rather than COMMIT_SHA: COMMIT_SHA is only
+  # populated for trigger-based builds and resolves to empty on a manual
+  # `gcloud builds submit`, producing the invalid tag `lucille:` and failing
+  # the build. BUILD_ID is always available. To trace a running revision
+  # back to its source: `gcloud builds describe <BUILD_ID>`.
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/lucille-repo/lucille:$BUILD_ID', '-t', 'us-central1-docker.pkg.dev/$PROJECT_ID/lucille-repo/lucille:latest', '.']
+    waitFor: ['test']
+>>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
   
   # Push the container image to Container Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/lucillellm2']
+    args: ['push', '--all-tags', 'us-central1-docker.pkg.dev/$PROJECT_ID/lucille-repo/lucille']
   
   # Deploy to Cloud Run
   - name: 'gcr.io/cloud-builders/gcloud'
     args: 
       - 'run'
       - 'deploy'
-      - 'lucillellm2'
-      - '--image=gcr.io/$PROJECT_ID/lucillellm2'
-      - '--region=us-east4'
+      - 'lucille'
+      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/lucille-repo/lucille:$BUILD_ID'
+      - '--region=us-central1'
       - '--allow-unauthenticated'
       - '--port=8080'
       - '--memory=4Gi'
@@ -23,5 +58,17 @@ steps:
       - '--max-instances=10'
       - '--timeout=600'
       - '--cpu-boost'
+<<<<<<< HEAD
       - '--set-env-vars=ENVIRONMENT=production'
       - '--set-secrets=OPENAI_API_KEY=openai-api-key:latest'
+=======
+      # Environment variables — add your production web domain to CORS_ALLOWED_ORIGINS
+      # before launching the web frontend. GCS_AUDIO_BUCKET is needed for soundscapes.
+      - '--concurrency=80'
+      # v1 API cost knobs (see escape_api/settings.py). ENFORCE_CONSENT keeps mood/journal behind
+      # explicit consent (GDPR Art. 9). LEGACY_REQUIRE_AUTH flips to true once the app sends tokens.
+      - '--set-env-vars=ENVIRONMENT=production,LOG_FORMAT=json,LOG_LEVEL=INFO,RATE_LIMIT_CHAT=10,RATE_LIMIT_GLOBAL=100,CORS_ALLOWED_ORIGINS=,GCS_AUDIO_BUCKET=,ENFORCE_CONSENT=true,LEGACY_REQUIRE_AUTH=false,LUCILLE_V1_MODEL=gpt-4o-mini,LUCILLE_V1_MAX_TOKENS=380,QUOTA_REFLECT_PER_DAY=6,QUOTA_COMPOSE_PER_DAY_FREE=3,PLAN_PROVIDER=catalog,WEATHER_PROVIDER=open-meteo,ASSET_BASE_URL=https://storage.googleapis.com/$PROJECT_ID-escape-media,LUCILLE_RENDER_URL=https://lucille-render-$PROJECT_NUMBER.us-central1.run.app/v1/render,PUBLIC_BASE_URL=https://lucille-$PROJECT_NUMBER.us-central1.run.app'
+      # Secrets from Google Secret Manager (never in env vars)
+      # internal-service-key is created by scripts/gcp/setup_deploy_access.sh (Cloud Scheduler jobs use it)
+      - '--set-secrets=OPENAI_API_KEY=openai-api-key:latest,INTERNAL_SERVICE_KEY=internal-service-key:latest,LUCILLE_RENDER_API_KEY=lucille-render-api-key:latest,LUCILLE_RENDER_CALLBACK_SECRET=lucille-render-callback-secret:latest'
+>>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2

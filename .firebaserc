@@ -1,5 +1,9 @@
 {
   "projects": {
+<<<<<<< HEAD
     "default": "escape-self-care-ai"
+=======
+    "default": "escape-self-care-505618"
+>>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
   }
 }

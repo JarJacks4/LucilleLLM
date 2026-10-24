@@ -1,3 +1,32 @@
+<<<<<<< HEAD
+=======
+# ═══════════════════════════════════════════════════════
+# SECRETS — NEVER commit these
+# ═══════════════════════════════════════════════════════
+.env
+.env.*
+!.env.example
+.env.backup
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Scratch files that have historically held credentials
+key.txt
+keys.txt
+secrets.txt
+
+# Firebase / GCP service account keys
+serviceAccount*.json
+firebase-*.json
+*-firebase-adminsdk-*.json
+escape-*-firebase-*.json
+*-credentials.json
+*-service-account.json
+
+# ═══════════════════════════════════════════════════════
+>>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
 # Python
 __pycache__/
 *.py[cod]
@@ -24,6 +53,11 @@ Thumbs.db
 venv/
 ENV/
 env/
+<<<<<<< HEAD
+=======
+.venv/
+.venv*/
+>>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
 
 # Node/Vite (if you're also using Vite for frontend)
 node_modules/

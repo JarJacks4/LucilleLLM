@@ -116,7 +116,11 @@ def _verify_signin(email: str, password: str) -> None:
         print()
         print("Fix (30 seconds):")
         print("  1. Open https://console.firebase.google.com/project/"
+<<<<<<< HEAD
               "escape-self-care-ai/authentication/providers")
+=======
+              "escape-self-care-505618/authentication/providers")
+>>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
         print("  2. Click 'Email/Password' in the list")
         print("  3. Toggle 'Enable' to ON (first toggle, not passwordless)")
         print("  4. Click 'Save'")

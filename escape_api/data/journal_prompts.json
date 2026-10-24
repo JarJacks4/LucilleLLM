@@ -1,0 +1,57 @@
+{
+  "_about": "Escape-authored journal prompts, keyed by mode then Mood Orb tone. Served free (no LLM call). '{word}' is replaced with the user's mood word. Lucille-guided mode may optionally personalise one of these with the LLM, but the dataset is always the fallback.",
+  "modes": {
+    "free": {
+      "label": "Free write", "sub": "Open page, gently prompted", "icon": "pencil", "color": "#4CF6F6",
+      "placeholder": "Begin your reflection…",
+      "prompts": {
+        "bright":   ["You're feeling {word}. What's fuelling it, and how do you want to spend it?", "Capture this — what would you want to remember about today?", "What went right that you didn't expect?"],
+        "calm":     ["A blank page, but I'm here. What's alive for you right now?", "Things feel {word}. What made room for that today?", "Write whatever is drifting through, no need to make it neat."],
+        "tender":   ["Something feels {word}. Who or what is close to your heart right now?", "What do you want to hold onto from today?", "Write a few lines to the part of you that's feeling soft."],
+        "restless": ["You came in {word}. What's the loudest thing in your head?", "Empty the tabs: list everything pulling at you, then circle one.", "Where in your body is the restlessness sitting?"],
+        "heavy":    ["It's okay to feel {word}. What's weighing the most right now?", "Write it plainly — no fixing yet, just naming.", "What would a kind friend say if they read this page?"],
+        "mixed":    ["A blank page, but I'm here. What's alive for you right now?", "If today had a weather report, what would it say?", "What's one thing you noticed about yourself today?"]
+      }
+    },
+    "guided": {
+      "label": "Lucille guided", "sub": "She asks, you answer, she reflects", "icon": "sparkle", "color": "#B9A3F0",
+      "placeholder": "Answer in your own words…",
+      "prompts": {
+        "bright":   ["You're {word}. What made today work, and how could you make room for more of it?", "Name one strength you used today. Where else could it help you?"],
+        "calm":     ["You came in {word}. What helped you get here, so you can find it again?", "What does your body feel like when it's this settled?"],
+        "tender":   ["You feel {word}. What's asking to be acknowledged?", "Who would you thank today if you could, and for what?"],
+        "restless": ["You came in {word}. What's the loudest thing in your head this evening?", "What's one thing you can let wait until tomorrow?"],
+        "heavy":    ["You're carrying something {word}. What happened, in a sentence or two?", "What's one small thing that would make the next hour a little lighter?"],
+        "mixed":    ["Your mood is {word}. What's pulling you in two directions?", "What's one thing you need more of this week?"]
+      }
+    },
+    "gratitude": {
+      "label": "Gratitude", "sub": "Three good things", "icon": "heart", "color": "#39D9C1",
+      "placeholder": "One good thing…",
+      "prompts": {
+        "bright":   ["Three things that went right today — however tiny."],
+        "calm":     ["Three small things that brought you ease today."],
+        "tender":   ["Three people or moments you're grateful for right now."],
+        "restless": ["Even on a {word} day: three small things that went right."],
+        "heavy":    ["On a {word} day, gratitude can be tiny. Name three things that helped, even a little."],
+        "mixed":    ["Three small things that went right today — however tiny."]
+      }
+    },
+    "ritual": {
+      "label": "Ritual Spark", "sub": "One intention for tonight", "icon": "flame", "color": "#EF7702",
+      "placeholder": "Tonight I will…",
+      "prompts": {
+        "bright":   ["Set one intention to carry this energy into tomorrow."],
+        "calm":     ["Set one intention to protect this calm tonight."],
+        "tender":   ["Set one gentle intention for the people (or the you) you care about."],
+        "restless": ["Set one intention for tonight. A single line is enough."],
+        "heavy":    ["One small, kind intention for tonight. Keep it tiny."],
+        "mixed":    ["Set one intention for tonight. A single line is enough."]
+      }
+    }
+  },
+  "letters": {
+    "prompts": ["What do you want to remember? What are you hoping for?", "Dear future me — here's what today felt like…"],
+    "deliverDays": [7, 30, 90]
+  }
+}
