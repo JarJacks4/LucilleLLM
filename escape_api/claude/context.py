@@ -647,7 +647,7 @@ def disclosure_due(repo: Repo, uid: str) -> bool:
     s = cfg()
     st = core.get_state(repo, uid) or {}
     age_band = str(st.get("ageBand") or "")
-    teen = bool(st.get("isMinor")) or age_band in ("13-17", "under13") or age_band == ""
+    teen = bool(st.get("isMinor")) or age_band in ("13-17", "under13")
     hours = s.disclosure_hours_teen if teen else s.disclosure_hours_adult
     turns = s.disclosure_turns_teen if teen else s.disclosure_turns_adult
     d = repo.get(user_path(uid, "state", "lucille_claude")) or {}
