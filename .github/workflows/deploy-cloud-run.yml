@@ -35,6 +35,8 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt pytest pytest-asyncio httpx
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Validate production API entrypoint syntax
+        run: python -m py_compile main.py
       - run: python -m pytest tests -q
 
   deploy:
