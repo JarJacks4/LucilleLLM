@@ -1,5 +1,3 @@
-<<<<<<< HEAD
-=======
 # ═══════════════════════════════════════════════════════
 # SECRETS — NEVER commit these
 # ═══════════════════════════════════════════════════════
@@ -26,7 +24,6 @@ escape-*-firebase-*.json
 *-service-account.json
 
 # ═══════════════════════════════════════════════════════
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
 # Python
 __pycache__/
 *.py[cod]
@@ -53,14 +50,11 @@ Thumbs.db
 venv/
 ENV/
 env/
-<<<<<<< HEAD
-=======
 .venv/
 .venv*/
->>>>>>> cbc7d48bf869c367e4478971c41d52a25c319bc2
 
 # Node/Vite (if you're also using Vite for frontend)
 node_modules/
 dist/
 *.log
-test*
+# Avoid broad test* exclusion: Cloud Build must upload tests/
